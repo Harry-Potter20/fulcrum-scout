@@ -1,0 +1,18 @@
+[project]
+name = "fulcrum"
+version = "0.1.0"
+description = "Topological, danger-ranked hole detection + forecasting for football tracking data."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy", "kloppy", "mplsoccer", "matplotlib", "pillow"]
+
+[project.scripts]
+fulcrum = "fulcrum.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["fulcrum"]
+package-dir = {"fulcrum" = "."}
