@@ -1,10 +1,12 @@
-"""Fulcrum Scout — MVP shell (app_build.md §48). Pages call services; services read the data layer + the validation
-registry. No model() calls from UI, no opaque master score, every claim carries its tier. Run:
+"""Fulcrum Scout — Streamlit shell, built to Fulcrum_Scout_UI_Capability_Architecture.md v0.2 (question-driven nav:
+Home/Discover/Solve/Player/Compare/Simulate/Video Lab/Measured/Evidence). Pages call services; services read the
+data layer + the validation registry. No model() calls from UI, no opaque master score, every claim carries its
+tier. Run:
 
     cd Football_Research && streamlit run app/app.py
 
-P0 surfaces: Home (command center) · Discover (capability, not production) · Player (dossier) · Tactical Fit ·
-Evidence (the registry, made visible). Counterfactual is present but marked EXPERIMENTAL until G3 (§28/§32).
+Counterfactual (Simulate) is present and LIVE but stays marked EXPERIMENTAL/UNPROVEN until G3 (§28/§32) — running
+live doesn't change the epistemic status, only whether the number is computed on request vs. precomputed.
 """
 from __future__ import annotations
 import os, sys
@@ -18,6 +20,7 @@ from app.services import scout_service as scout
 from app.services import fit_service as fit
 from app.services import measured_service as measured
 from app.services import counterfactual_service as cfsvc
+from app.services import compare_service as compare
 from app import db
 from fulcrum import registry as R
 
@@ -83,13 +86,13 @@ _gate()
 
 # ================= sidebar =================
 with st.sidebar:
-    st.markdown(f'<div style="font-family:ui-monospace,monospace;font-size:20px;font-weight:700;color:{P["cy"]};'
-                f'letter-spacing:.04em">FULCRUM</div><div class="eyebrow" style="margin-bottom:14px">Scout · tactical intelligence</div>',
+    st.markdown(f'<div style="font-family:\'IBM Plex Mono\',monospace;font-size:21px;font-weight:700;color:{P["cy"]};'
+                f'letter-spacing:.02em">FULCRUM</div><div class="eyebrow" style="margin-bottom:14px">Scout · tactical intelligence</div>',
                 unsafe_allow_html=True)
     ss.season = st.selectbox("Season", S.SEASONS, index=S.SEASONS.index(ss.season))
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    for pg in ["Home", "Discover", "Player", "Tactical Fit", "Measured", "Evidence"]:
-        if st.button(pg, key=f"nav_{pg}", use_container_width=True):
+    for pg in ["Home", "Discover", "Solve", "Player", "Compare", "Simulate", "Video Lab", "Measured", "Evidence"]:
+        if st.button(pg, key=f"nav_{pg}", use_container_width=True, type=("primary" if ss.page == pg else "secondary")):
             goto(pg)
     st.markdown(f'<div class="mut mono" style="font-size:9.5px;margin-top:20px;line-height:1.6">'
                 f'Identity never enters the backbone.<br>No capability claim without evidence.<br>'
@@ -104,11 +107,11 @@ def home():
                 f'not production. Fulcrum measures the geometry and behaviour producing the numbers — space creation, '
                 f'off-ball penetration, press resistance — then connects them to the tactical problem your team needs to solve.</p>',
                 unsafe_allow_html=True)
-    # the intelligence workflow as the mental model (§1): discover → fit → simulate → evidence
-    actions = [("DISCOVER", "Find players with capabilities we need", "Discover"),
-               ("FIT", "Test them against our tactical problem", "Tactical Fit"),
-               ("SIMULATE", "See what changes if we sign them", "Player"),
-               ("EVIDENCE", "Inspect how Fulcrum knows", "Evidence")]
+    # the intelligence workflow as the mental model (spec §4): find → solve → analyse → compare
+    actions = [("FIND PLAYERS", "Capability-based market discovery", "Discover"),
+               ("SOLVE A PROBLEM", "Translate a tactical need into capabilities", "Solve"),
+               ("ANALYSE VIDEO", "Drop in football, get tactical intelligence", "Video Lab"),
+               ("COMPARE PLAYERS", "Same output — same mechanism?", "Compare")]
     c = st.columns(4)
     for col, (lab, sub, pg) in zip(c, actions):
         with col:
@@ -151,7 +154,7 @@ def home():
          "Open a capability profile", lambda: goto("Player", seed_player)),
         ("② Solve a tactical problem",
          "State a need — “break a low block” — and rank the market by the capability that addresses it.",
-         "Open Tactical Fit", lambda: goto("Tactical Fit")),
+         "Open Solve", lambda: goto("Solve")),
         ("③ Measured, not estimated",
          "The real Fulcrum measurement — space creation computed from geometry on live tracked players.",
          "Open Measured geometry", lambda: goto("Measured")),
@@ -260,58 +263,84 @@ def player_page():
                         f'<div class="mut mono" style="font-size:10.5px;margin:-2px 0 7px">solves it via <span style="color:{P["tx"]}">{mech}</span> '
                         f'· shares {", ".join(s["shared"])}</div>', unsafe_allow_html=True)
     with tabs[3]:
-        st.markdown(f'{ui.badge("Simulation · research preview", "b-exp")}', unsafe_allow_html=True)
-        reg = R.get("counterfactual_mechanism_attack")
-        st.markdown(f'<div class="fpanel" style="margin-top:10px"><div class="eyebrow">Signing impact</div>'
-                    f'<div class="mut" style="font-size:13px;line-height:1.7;margin-top:6px">'
-                    f'Drops this capability into the world model and rolls real tracked phases forward — everyone '
-                    f'reacts — to show a <b style="color:{P["tx"]}">different simulated trajectory</b>. The <i>mechanism</i> '
-                    f'is validated ({reg["metric"]}); the signing-impact <i>number</i> below is not — it washes out on '
-                    f'noisy tracking and needs sim-to-real (G3). This runs live on request; the result is always a '
-                    f'research preview, never a prediction.</div>'
-                    f'<div style="margin-top:10px">{ui.tier_badge("counterfactual_signing_impact")}'
-                    f'<span class="mut mono" style="font-size:10px">{R.get("counterfactual_signing_impact")["evidence"]}</span></div></div>',
-                    unsafe_allow_html=True)
+        st.markdown(f'<div class="mut" style="font-size:13px;line-height:1.7">Direct entry into the world-model '
+                    f'simulation — inject a capability, roll real tracked phases forward, read the modelled effect. '
+                    f'{ui.badge("Simulation · research preview", "b-exp")}</div>', unsafe_allow_html=True)
+        if st.button(f"▶ Open Simulate for {pl['name'].split()[-1]}", key="player_to_sim"):
+            goto("Simulate")
 
-        if not cfsvc.available():
-            st.markdown(f'<div class="mut mono" style="font-size:11px;margin-top:10px">Simulation engine unavailable '
-                        f'in this environment (needs torch + HF access) — showing the mechanism description only.</div>',
-                        unsafe_allow_html=True)
+
+# ================= SIMULATE =================
+def simulate_page():
+    st.markdown('<div class="eyebrow">Simulate · what happens if we put this capability in our football</div>', unsafe_allow_html=True)
+    st.markdown("# Simulate")
+    reg = R.get("counterfactual_mechanism_attack")
+    st.markdown(f'<div class="fpanel"><div class="mut" style="font-size:13px;line-height:1.7">'
+                f'Injects a capability into the world model and rolls REAL tracked phases forward — everyone reacts — '
+                f'to show a <b style="color:{P["tx"]}">different simulated trajectory</b>. The <i>mechanism</i> is '
+                f'validated ({reg["metric"]}); the signing-impact <i>number</i> below is not — it washes out on noisy '
+                f'tracking and needs sim-to-real (G3). Runs live on request; always a research preview, never a '
+                f'prediction of what signing a real player would do.</div>'
+                f'<div style="margin-top:10px">{ui.tier_badge("counterfactual_signing_impact")}'
+                f'<span class="mut mono" style="font-size:10px">{R.get("counterfactual_signing_impact")["evidence"]}</span></div></div>',
+                unsafe_allow_html=True)
+
+    if not cfsvc.available():
+        st.markdown(f'<div class="mut mono" style="font-size:11px;margin-top:10px">Simulation engine unavailable '
+                    f'in this environment (needs torch + HF access).</div>', unsafe_allow_html=True)
+        return
+
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        axis = st.selectbox("Capability to inject", ["forward_intent", "pace", "width", "press_resistance"],
+                            format_func=lambda a: {"forward_intent": "Forward intent", "pace": "Pace",
+                                                   "width": "Width", "press_resistance": "Press resistance"}[a],
+                            key="cf_axis")
+        level = st.slider("Level (capability units, roughly σ of real player variation)", -2.0, 3.0, 1.5, 0.5, key="cf_level")
+    with c2:
+        anchor_seq = st.selectbox("Anchor situations · real tracked sequence", c_measured_seqs() or [cfsvc.ANCHOR_SEQ_DEFAULT], key="cf_seq")
+        n_anc = st.slider("Real anchor phases to simulate over", 5, 30, 15, key="cf_n")
+
+    if st.button("▶ Run counterfactual", key="cf_run", type="primary"):
+        with st.spinner(f"Rolling {n_anc} real tracked phases from {anchor_seq} through the twin ..."):
+            r = cfsvc.run_signing_simulation({axis: level}, seq=anchor_seq, n_anchors=n_anc)
+        ss.cf_result = r
+    r = ss.get("cf_result")
+    if r:
+        if r.get("error"):
+            st.markdown(f'<div class="fcard" style="margin-top:10px;border-color:{P["danger"]}44">'
+                        f'<span class="mut" style="font-size:12.5px">{r["error"]}</span></div>', unsafe_allow_html=True)
         else:
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            axis = st.selectbox("Capability to inject", ["forward_intent", "pace", "width", "press_resistance"],
-                                format_func=lambda a: {"forward_intent": "Forward intent", "pace": "Pace",
-                                                       "width": "Width", "press_resistance": "Press resistance"}[a],
-                                key="cf_axis")
-            level = st.slider("Level (capability units, roughly σ of real player variation)", -2.0, 3.0, 1.5, 0.5, key="cf_level")
-            n_anc = st.slider("Real anchor phases to simulate over", 5, 30, 15, key="cf_n")
-            if st.button("▶ Run simulation", key="cf_run"):
-                with st.spinner(f"Rolling {n_anc} real tracked phases through the twin ..."):
-                    r = cfsvc.run_signing_simulation({axis: level}, n_anchors=n_anc)
-                ss.cf_result = r
-            r = ss.get("cf_result")
-            if r:
-                if r.get("error"):
-                    st.markdown(f'<div class="fcard" style="margin-top:10px;border-color:{P["danger"]}44">'
-                                f'<span class="mut" style="font-size:12.5px">{r["error"]}</span></div>', unsafe_allow_html=True)
-                else:
-                    lo, hi = r["delta_danger_CI95"]
-                    sign = "+" if r["mean_delta_danger"] >= 0 else ""
-                    st.markdown(f'<div class="fcard" style="margin-top:10px">'
-                                f'<div class="sclab">MEAN Δ DANGER · {r["phases"]} real phases · {r["anchor_seq"]}</div>'
-                                f'<div class="scnum mag">{sign}{r["mean_delta_danger"]:.3f}</div>'
-                                f'<div class="mut mono" style="font-size:10.5px;margin-top:2px">95% CI [{lo:+.3f}, {hi:+.3f}] · '
-                                f'validity <b style="color:{P["tx"]}">{r["simulation_validity"]}</b> · '
-                                f'{ui.badge("LIVE", "b-val") if r.get("live") else ""}</div>'
-                                f'<div style="margin-top:8px;font-size:11.5px;color:{P["mut"]}">{r["epistemic"]}</div></div>',
-                                unsafe_allow_html=True)
+            lo, hi = r["delta_danger_CI95"]
+            sign = "+" if r["mean_delta_danger"] >= 0 else ""
+            st.markdown('<div class="eyebrow" style="margin-top:14px">What changed</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="fcard" style="margin-top:6px">'
+                        f'<div class="sclab">MEAN Δ DANGER · {r["phases"]} real phases · {r["anchor_seq"]}</div>'
+                        f'<div class="scnum mag">{sign}{r["mean_delta_danger"]:.3f}</div>'
+                        f'<div class="mut mono" style="font-size:10.5px;margin-top:2px">95% CI [{lo:+.3f}, {hi:+.3f}] · '
+                        f'validity <b style="color:{P["tx"]}">{r["simulation_validity"]}</b> · '
+                        f'{ui.badge("LIVE", "b-val") if r.get("live") else ""}</div>'
+                        f'<div style="margin-top:8px;font-size:11.5px;color:{P["mut"]}">{r["epistemic"]}</div></div>',
+                        unsafe_allow_html=True)
+            st.markdown(f'<div class="mut mono" style="font-size:10px;margin-top:10px">Why: the twin conditions the '
+                        f'injected capability as an input velocity perturbation, rolls forward with defenders reacting, '
+                        f'and the independent topology engine (not the neural latent) reads danger before/after. '
+                        f'A rendered before/after pitch needs per-anchor trajectories this readout doesn\'t expose yet — '
+                        f'shown here as the honest aggregate rather than an illustrative pitch that isn\'t actually computed.</div>',
+                        unsafe_allow_html=True)
 
 
-# ================= TACTICAL FIT =================
-def tactical_fit():
-    st.markdown('<div class="eyebrow">Tactical fit · solve a problem, not rank a market</div>', unsafe_allow_html=True)
-    st.markdown("# Tactical Fit")
-    need = st.selectbox("Our tactical need", list(fit.NEEDS))
+# ================= SOLVE (tactical fit) =================
+def solve_page():
+    st.markdown('<div class="eyebrow">Solve · what tactical problem are we solving?</div>', unsafe_allow_html=True)
+    st.markdown("# Solve")
+    st.text_area("Describe the problem, if it helps you think it through", placeholder=
+                "e.g. \"We struggle to break compact low blocks and need a left-sided midfielder who can create "
+                "separation between the lines without requiring constant possession.\"", key="solve_freetext",
+                help="Free text isn't parsed — it's here to help you reason before picking the structured need below, "
+                     "which is what actually drives the search.")
+    need = st.selectbox("Your problem → required capabilities", list(fit.NEEDS))
     priorities = fit.NEEDS[need]
     st.markdown(f'<div class="mut mono" style="font-size:11px">priority stack: ' +
                 " › ".join(f'<b class="cy">{S.CAP_AXES[a]["label"]}</b>' for a in priorities) + '</div>', unsafe_allow_html=True)
@@ -424,6 +453,96 @@ def measured_page():
                 unsafe_allow_html=True)
 
 
-PAGES = {"Home": home, "Discover": discover, "Player": player_page, "Tactical Fit": tactical_fit,
-         "Measured": measured_page, "Evidence": evidence}
+# ================= COMPARE =================
+def compare_page():
+    st.markdown('<div class="eyebrow">Compare · same output, same mechanism?</div>', unsafe_allow_html=True)
+    st.markdown("# Compare")
+    st.markdown(f'<p class="mut" style="max-width:640px">Two players can produce similar numbers through '
+                f'completely different mechanisms — or different numbers through the same one. This compares '
+                f'capability, not box score, and always shows <i>how</i>, not just <i>how much</i>.</p>', unsafe_allow_html=True)
+
+    idx = c_index(ss.season)
+    names = [r["name"] for r in idx]
+    default = [ss.player] if ss.player in names else names[:1]
+    picks = st.multiselect("Players (2–3)", names, default=default, max_selections=3, key="cmp_picks")
+    if len(picks) < 2:
+        st.markdown(f'<div class="mut mono" style="font-size:11px">Pick at least 2 players.</div>', unsafe_allow_html=True)
+        return
+
+    r = compare.compare(picks, ss.season)
+    names = r["names"]
+    if r.get("divergence"):
+        d = r["divergence"]
+        st.markdown(f'<div class="fpanel"><span class="eyebrow">Mechanism divergence</span>'
+                    f'<div style="font-size:13px;margin-top:6px;color:{P["tx"]}">{names[0].split()[-1]} leads via '
+                    f'<b class="cy">{d["a_leads"]}</b>; {names[1].split()[-1]} leads via <b class="cy">{d["b_leads"]}</b> — '
+                    f'similar output can come from different geometry.</div></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="eyebrow" style="margin-top:16px">Mechanism</div>', unsafe_allow_html=True)
+    cols = st.columns(len(names))
+    for col, n in zip(cols, names):
+        with col:
+            st.markdown(f'<div class="fcard" style="min-height:100px"><b style="font-size:13px">{n}</b>'
+                        f'<div class="mut" style="font-size:12px;margin-top:6px;line-height:1.5">{r["mechanism"][n]}</div></div>',
+                        unsafe_allow_html=True)
+
+    st.markdown('<div class="eyebrow" style="margin-top:16px">Capability matrix</div>', unsafe_allow_html=True)
+    header = "".join(f'<th style="text-align:right;padding:4px 10px;font-size:10.5px;color:' + P["mut"] + f'">{n.split()[-1]}</th>' for n in names)
+    rows_html = ""
+    for row in r["matrix"]:
+        cells = "".join(
+            f'<td style="text-align:right;padding:4px 10px;font-family:ui-monospace,monospace;'
+            f'color:{P["cy"] if (row.get(n) or 0)>=80 else P["tx"]}">{f"{row[n]:.0f}" if row.get(n) is not None else "n/a"}</td>'
+            for n in names)
+        rows_html += (f'<tr style="border-bottom:1px solid {P["line"]}66"><td style="padding:4px 10px;font-size:12.5px">'
+                      f'{row["label"]} {ui.tier_badge(row["registry_key"])}</td>{cells}</tr>')
+    st.markdown(f'<table style="width:100%;border-collapse:collapse"><thead><tr><th></th>{header}</tr></thead>'
+                f'<tbody>{rows_html}</tbody></table>', unsafe_allow_html=True)
+
+    st.markdown('<div class="eyebrow" style="margin-top:16px">Production · context, not the product</div>', unsafe_allow_html=True)
+    header2 = "".join(f'<th style="text-align:right;padding:4px 10px;font-size:10.5px;color:' + P["mut"] + f'">{n.split()[-1]}</th>' for n in names)
+    rows2 = ""
+    for row in r["production"]:
+        cells = "".join(f'<td style="text-align:right;padding:4px 10px;font-family:ui-monospace,monospace;color:{P["tx"]}">'
+                        f'{row[n] if row.get(n) is not None else "n/a"}</td>' for n in names)
+        rows2 += f'<tr style="border-bottom:1px solid {P["line"]}44"><td style="padding:4px 10px;font-size:12px;color:{P["mut"]}">{row["label"]}</td>{cells}</tr>'
+    st.markdown(f'<table style="width:100%;border-collapse:collapse"><thead><tr><th></th>{header2}</tr></thead>'
+                f'<tbody>{rows2}</tbody></table>', unsafe_allow_html=True)
+
+
+# ================= VIDEO LAB =================
+def video_lab_page():
+    st.markdown('<div class="eyebrow">Video Lab · what is happening in this match?</div>', unsafe_allow_html=True)
+    st.markdown("# Video Lab")
+    st.markdown(f'<p class="mut" style="max-width:640px"><b style="color:{P["tx"]}">Drop in football. Get tactical '
+                f'intelligence.</b> High-resolution broadcast video → spatial reconstruction → canonical state → '
+                f'Fulcrum tactical analysis. Recognition-free: YOLO(person+ball) → ByteTrack → homography → canonical '
+                f'state → Fulcrum services. No re-ID, jersey OCR, or role classifier.</p>', unsafe_allow_html=True)
+
+    st.markdown(f'<div class="fpanel"><span class="eyebrow">Pipeline</span>'
+                f'<div class="mut mono" style="font-size:11px;margin-top:8px;line-height:2.1">'
+                f'UPLOAD → JOB → DETECTION → TRACKING → CALIBRATION → CANONICAL STATE → FULCRUM ANALYSIS → RESULTS</div></div>',
+                unsafe_allow_html=True)
+
+    st.markdown('<div class="eyebrow" style="margin-top:16px">Known ingestion characteristics · real, measured</div>', unsafe_allow_html=True)
+    rows = [("Player position error (median)", "0.17 m", "b-val"),
+            ("Player position error (p90)", "0.46 m", "b-val"),
+            ("Player recall within 4 m", "0.97", "b-val"),
+            ("Team assignment (shirt colour, 1080p)", "0.95–0.999", "b-val"),
+            ("Ball recall", "0.47 — known limitation", "b-exp")]
+    for label, val, badge in rows:
+        st.markdown(f'<div class="kv"><span class="mut" style="font-size:12.5px">{label}</span>'
+                    f'<span>{ui.badge(val, badge)}</span></div>', unsafe_allow_html=True)
+
+    st.markdown(f'<div class="fcard" style="margin-top:16px;border-color:{P["amber"]}44">'
+                f'<span class="eyebrow" style="color:{P["amber"]}">Not yet available in Scout</span>'
+                f'<div class="mut" style="font-size:12.5px;margin-top:6px;line-height:1.6">The ingestion pipeline above '
+                f'is validated (see Evidence) and runs today as a research job, but async video upload isn\'t wired '
+                f'into this product surface yet — no upload button that goes nowhere. When it lands, results feed '
+                f'directly into Solve (video → tactical problem → capability search) and Discover, per the video↔scout '
+                f'bridge in the product spec.</div></div>', unsafe_allow_html=True)
+
+
+PAGES = {"Home": home, "Discover": discover, "Solve": solve_page, "Player": player_page, "Compare": compare_page,
+         "Simulate": simulate_page, "Video Lab": video_lab_page, "Measured": measured_page, "Evidence": evidence}
 PAGES.get(ss.page, home)()

@@ -17,30 +17,53 @@ _BADGE = {
 }
 
 
+MONO = "'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace"
+
+
 def inject_css():
     st.markdown(f"""<style>
-      .stApp {{ background:{P['bg']}; color:{P['tx']}; }}
-      .block-container {{ padding-top:2.4rem; max-width:1180px; }}
-      h1,h2,h3,h4 {{ color:{P['hi']}; font-family:ui-monospace,'SF Mono',monospace; letter-spacing:.01em; }}
-      .eyebrow {{ font-family:ui-monospace,monospace; font-size:10px; letter-spacing:.22em; text-transform:uppercase;
-                  color:{P['cy']}; }}
+      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+
+      .stApp {{
+        background:
+          linear-gradient(180deg, {P['bg']} 0%, #060910 100%),
+          repeating-linear-gradient(0deg, transparent 0px, transparent 31px, {P['line']}14 32px);
+        color:{P['tx']}; font-family:{MONO};
+      }}
+      .block-container {{ padding-top:2.4rem; max-width:1200px; }}
+      * {{ font-variant-numeric: tabular-nums; }}
+      h1 {{ color:{P['hi']}; font-family:{MONO}; font-weight:700; letter-spacing:-.01em; font-size:2.1rem !important; }}
+      h2,h3,h4 {{ color:{P['hi']}; font-family:{MONO}; font-weight:600; letter-spacing:0; }}
+      p, div, span, label {{ font-family:{MONO}; }}
+      .eyebrow {{ font-family:{MONO}; font-size:10px; font-weight:600; letter-spacing:.24em; text-transform:uppercase;
+                  color:{P['cy']}; border-left:2px solid {P['cy']}55; padding-left:7px; }}
       .mut {{ color:{P['mut']}; }} .cy {{ color:{P['cy']}; }} .mag {{ color:{P['mag']}; }}
-      .fpanel {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:10px; padding:18px 20px; }}
-      .fcard {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:10px; padding:14px 16px;
-                transition:border-color .15s; }}
-      .fcard:hover {{ border-color:{P['cy']}44; }}
-      .badge {{ display:inline-block; font-family:ui-monospace,monospace; font-size:9.5px; letter-spacing:.1em;
-                text-transform:uppercase; padding:2px 7px; border-radius:5px; border:1px solid; margin-right:5px; }}
-      .kv {{ display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid {P['line']}55;
-             font-size:13px; }}
-      .mono {{ font-family:ui-monospace,monospace; }}
-      .scnum {{ font-family:ui-monospace,monospace; font-size:26px; font-weight:700; line-height:1; }}
-      .sclab {{ font-family:ui-monospace,monospace; font-size:8.5px; letter-spacing:.16em; color:{P['mut']};
+      .fpanel {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:8px; padding:18px 20px;
+                 box-shadow: inset 0 1px 0 #ffffff06; }}
+      .fcard {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:8px; padding:14px 16px;
+                transition:border-color .15s, transform .1s; box-shadow: inset 0 1px 0 #ffffff06; }}
+      .fcard:hover {{ border-color:{P['cy']}55; }}
+      .badge {{ display:inline-block; font-family:{MONO}; font-size:9.5px; font-weight:500; letter-spacing:.1em;
+                text-transform:uppercase; padding:2px 7px; border-radius:4px; border:1px solid; margin-right:5px; }}
+      .kv {{ display:flex; justify-content:space-between; align-items:center; padding:6.5px 0;
+             border-bottom:1px solid {P['line']}55; font-size:13px; }}
+      .mono {{ font-family:{MONO}; }}
+      .scnum {{ font-family:{MONO}; font-size:27px; font-weight:700; line-height:1; letter-spacing:-.01em; }}
+      .sclab {{ font-family:{MONO}; font-size:8.5px; font-weight:600; letter-spacing:.17em; color:{P['mut']};
                 text-transform:uppercase; }}
       .stButton>button {{ background:{P['panel2']}; color:{P['tx']}; border:1px solid {P['line']};
-                          border-radius:8px; font-family:ui-monospace,monospace; }}
+                          border-radius:6px; font-family:{MONO}; font-size:13px; transition:border-color .12s, color .12s; }}
       .stButton>button:hover {{ border-color:{P['cy']}; color:{P['cy']}; }}
+      .stButton>button[kind="primary"] {{ background:{P['cy']}14; border-color:{P['cy']}; color:{P['cy']}; }}
+      .stButton>button[kind="primary"]:hover {{ background:{P['cy']}22; }}
       section[data-testid="stSidebar"] {{ background:{P['panel']}; border-right:1px solid {P['line']}; }}
+      table {{ border-collapse:collapse; width:100%; }}
+      th {{ text-align:right; font-family:{MONO}; font-size:10px; font-weight:600; letter-spacing:.08em;
+            color:{P['mut']}; text-transform:uppercase; padding:6px 10px; border-bottom:1px solid {P['line']}; }}
+      td {{ font-family:{MONO}; padding:6px 10px; }}
+      ::-webkit-scrollbar {{ width:9px; height:9px; }}
+      ::-webkit-scrollbar-thumb {{ background:{P['line']}; border-radius:5px; }}
+      ::-webkit-scrollbar-track {{ background:transparent; }}
     </style>""", unsafe_allow_html=True)
 
 
