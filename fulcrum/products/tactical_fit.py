@@ -38,7 +38,7 @@ class TacticalFit:
         self.w_pr = 0.6                                        # relational strength (validated in G1d)
 
     # ---- one conditioned multi-step rollout of a Window -> attacker/defender/ball final positions ----
-    def _rollout(self, window, cap):
+    def _rollout(self, window, cap, return_start=False):
         import torch
         W = self.W
         b = W.collate([W.make_sample(window, W.RS)], W.MAX_NODES)
@@ -47,6 +47,8 @@ class TacticalFit:
         n = int(mask[0].sum()); tt = team[0]; att = (tt == 1.0)
         fwd = float(cap.get("forward_intent", 0.0)); pac = float(cap.get("pace", 0.0))
         wid = float(cap.get("width", 0.0)); prs = float(cap.get("press_resistance", 0.0))
+        if return_start:                                        # positions BEFORE the capability perturbs velocity —
+            p0 = pos[0].detach().cpu().numpy()[:n]               # i.e. the shared starting frame (§ pitch viz)
         # kinematic capability -> INPUT velocity perturbation on the attackers (the twin reacts to it)
         vel[0, att, 0] += fwd * SPEED_UNIT                      # forward_intent -> +x drive toward goal
         vel[0, att, 1] += wid * SPEED_UNIT                      # width -> lateral spread
@@ -63,7 +65,10 @@ class TacticalFit:
                 disp = disp * (1 - (self.w_pr * m * pressure).clamp(-0.95, 0.95))[..., None]
             newpos = pos + disp; vel = (newpos - pos) / DT; pos = newpos
         p = pos[0].detach().cpu().numpy()[:n]; tm = tt.detach().cpu().numpy()[:n]
-        return p[tm == 1.0], p[tm == 0.0], p[tm == 2.0]
+        out = (p[tm == 1.0], p[tm == 0.0], p[tm == 2.0])
+        if return_start:
+            return out + ((p0[tm == 1.0], p0[tm == 0.0], p0[tm == 2.0]),)
+        return out
 
     def _reward(self, window, cap):
         import fulcrum

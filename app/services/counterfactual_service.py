@@ -94,3 +94,34 @@ def run_signing_simulation(capability: dict, seq: str = ANCHOR_SEQ_DEFAULT, n_an
         return report
     except Exception as e:
         return {"error": f"simulation failed: {e}"}
+
+
+def _pts(arr) -> list:
+    """numpy Nx2 -> plain [[x,y], ...] floats, pitch metres. JSON/session-state safe."""
+    return [[round(float(x), 2), round(float(y), 2)] for x, y in arr]
+
+
+def rollout_for_viz(capability: dict, seq: str = ANCHOR_SEQ_DEFAULT, anchor_index: int = 0) -> dict:
+    """ONE real anchor's actual before/after positions — baseline (no capability) vs conditioned (capability
+    injected) — for the pitch visualization. Every point returned is a REAL computed rollout position (the twin's
+    own output), never an illustrative/synthetic one: this is what makes the pitch honest rather than a mockup.
+    Baseline and conditioned share the same starting frame (the capability only perturbs the initial velocity, so
+    position at t0 is identical either way) — returned once as `start`."""
+    if not available():
+        return {"error": "simulation engine unavailable in this environment (torch/HF token not present)"}
+    try:
+        eng = _engine()
+        anchors = _anchors_for(seq, max(anchor_index + 1, 10))
+        if not anchors or anchor_index >= len(anchors):
+            return {"error": f"no anchor #{anchor_index} available in {seq}"}
+        window = anchors[anchor_index]
+        att0, dfn0, ball0, start0 = eng._rollout(window, {}, return_start=True)
+        att1, dfn1, ball1, _ = eng._rollout(window, capability, return_start=True)
+        return {
+            "seq": seq, "anchor_index": anchor_index, "capability": capability,
+            "start": {"att": _pts(start0[0]), "dfn": _pts(start0[1]), "ball": _pts(start0[2])},
+            "baseline_end": {"att": _pts(att0), "dfn": _pts(dfn0), "ball": _pts(ball0)},
+            "conditioned_end": {"att": _pts(att1), "dfn": _pts(dfn1), "ball": _pts(ball1)},
+        }
+    except Exception as e:
+        return {"error": f"simulation failed: {e}"}

@@ -101,12 +101,26 @@ with st.sidebar:
 
 # ================= HOME =================
 def home():
-    st.markdown('<div class="eyebrow">Command center</div>', unsafe_allow_html=True)
-    st.markdown("# Fulcrum Scout")
-    st.markdown(f'<p style="color:{P["mut"]};max-width:620px">Scouting by <b style="color:{P["tx"]}">capability</b>, '
-                f'not production. Fulcrum measures the geometry and behaviour producing the numbers — space creation, '
-                f'off-ball penetration, press resistance — then connects them to the tactical problem your team needs to solve.</p>',
-                unsafe_allow_html=True)
+    live_n = len(c_index(ss.season))
+    st.markdown(f'''<div style="position:relative;padding:10px 0 6px;margin-bottom:4px;overflow:hidden">
+        <div style="position:absolute;top:-60px;left:-80px;width:420px;height:280px;border-radius:50%;
+                    background:radial-gradient(circle, {P["cy"]}14 0%, transparent 70%);pointer-events:none"></div>
+        <div style="position:relative;display:flex;align-items:center;gap:7px;margin-bottom:18px">
+            <span style="width:7px;height:7px;border-radius:50%;background:{P["good"]};display:inline-block;
+                        box-shadow:0 0 8px {P["good"]}"></span>
+            <span class="mono" style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:{P["good"]}">
+                live · {live_n} profiles measured this season</span>
+        </div>
+        <div style="position:relative;font-family:'IBM Plex Mono',monospace;font-weight:700;letter-spacing:-.02em;
+                    line-height:.98;font-size:clamp(2.4rem,5.2vw,3.6rem)">
+            <div style="color:{P['hi']}">SCOUT BY</div>
+            <div style="color:{P['cy']}">CAPABILITY.</div>
+        </div>
+        <p style="color:{P['mut']};max-width:600px;margin-top:16px;font-size:14px;line-height:1.6">Not production.
+            Fulcrum measures the geometry and behaviour producing the numbers — <b style="color:{P['tx']}">space
+            creation</b>, <b style="color:{P['tx']}">off-ball penetration</b>, <b style="color:{P['tx']}">press
+            resistance</b> — then connects them to the tactical problem your team needs to solve.</p>
+    </div>''', unsafe_allow_html=True)
     # the intelligence workflow as the mental model (spec §4): find → solve → analyse → compare
     actions = [("FIND PLAYERS", "Capability-based market discovery", "Discover"),
                ("SOLVE A PROBLEM", "Translate a tactical need into capabilities", "Solve"),
@@ -303,9 +317,10 @@ def simulate_page():
         n_anc = st.slider("Real anchor phases to simulate over", 5, 30, 15, key="cf_n")
 
     if st.button("▶ Run counterfactual", key="cf_run", type="primary"):
+        cap = {axis: level}
         with st.spinner(f"Rolling {n_anc} real tracked phases from {anchor_seq} through the twin ..."):
-            r = cfsvc.run_signing_simulation({axis: level}, seq=anchor_seq, n_anchors=n_anc)
-        ss.cf_result = r
+            ss.cf_result = cfsvc.run_signing_simulation(cap, seq=anchor_seq, n_anchors=n_anc)
+            ss.cf_pitch = cfsvc.rollout_for_viz(cap, seq=anchor_seq, anchor_index=0)
     r = ss.get("cf_result")
     if r:
         if r.get("error"):
@@ -314,21 +329,29 @@ def simulate_page():
         else:
             lo, hi = r["delta_danger_CI95"]
             sign = "+" if r["mean_delta_danger"] >= 0 else ""
-            st.markdown('<div class="eyebrow" style="margin-top:14px">What changed</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="fcard" style="margin-top:6px">'
-                        f'<div class="sclab">MEAN Δ DANGER · {r["phases"]} real phases · {r["anchor_seq"]}</div>'
-                        f'<div class="scnum mag">{sign}{r["mean_delta_danger"]:.3f}</div>'
-                        f'<div class="mut mono" style="font-size:10.5px;margin-top:2px">95% CI [{lo:+.3f}, {hi:+.3f}] · '
-                        f'validity <b style="color:{P["tx"]}">{r["simulation_validity"]}</b> · '
-                        f'{ui.badge("LIVE", "b-val") if r.get("live") else ""}</div>'
-                        f'<div style="margin-top:8px;font-size:11.5px;color:{P["mut"]}">{r["epistemic"]}</div></div>',
-                        unsafe_allow_html=True)
-            st.markdown(f'<div class="mut mono" style="font-size:10px;margin-top:10px">Why: the twin conditions the '
-                        f'injected capability as an input velocity perturbation, rolls forward with defenders reacting, '
-                        f'and the independent topology engine (not the neural latent) reads danger before/after. '
-                        f'A rendered before/after pitch needs per-anchor trajectories this readout doesn\'t expose yet — '
-                        f'shown here as the honest aggregate rather than an illustrative pitch that isn\'t actually computed.</div>',
-                        unsafe_allow_html=True)
+            c1, c2 = st.columns([1, 1.35])
+            with c1:
+                st.markdown('<div class="eyebrow" style="margin-top:14px">What changed</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="fcard" style="margin-top:6px">'
+                            f'<div class="sclab">MEAN Δ DANGER · {r["phases"]} real phases · {r["anchor_seq"]}</div>'
+                            f'<div class="scnum mag">{sign}{r["mean_delta_danger"]:.3f}</div>'
+                            f'<div class="mut mono" style="font-size:10.5px;margin-top:2px">95% CI [{lo:+.3f}, {hi:+.3f}] · '
+                            f'validity <b style="color:{P["tx"]}">{r["simulation_validity"]}</b> · '
+                            f'{ui.badge("LIVE", "b-val") if r.get("live") else ""}</div>'
+                            f'<div style="margin-top:8px;font-size:11.5px;color:{P["mut"]}">{r["epistemic"]}</div></div>',
+                            unsafe_allow_html=True)
+                st.markdown(f'<div class="mut mono" style="font-size:10px;margin-top:10px">The number to the left is '
+                            f'the mean across all {r["phases"]} anchors — the pitch to the right shows one of them, '
+                            f'the actual computed positions, not an illustration.</div>', unsafe_allow_html=True)
+            with c2:
+                st.markdown('<div class="eyebrow" style="margin-top:14px">The mechanism · one real anchor</div>', unsafe_allow_html=True)
+                pv = ss.get("cf_pitch")
+                if pv:
+                    st.markdown(charts.counterfactual_pitch(pv), unsafe_allow_html=True)
+                    st.markdown(f'<div class="mut mono" style="font-size:10px;margin-top:4px">Hollow = start · muted line = '
+                                f'baseline rollout (no capability) · {"" if pv.get("error") else "cyan"} line = with the '
+                                f'injected capability — defenders shown at their conditioned reaction only.</div>',
+                                unsafe_allow_html=True)
 
 
 # ================= SOLVE (tactical fit) =================

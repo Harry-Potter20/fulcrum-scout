@@ -97,3 +97,61 @@ def anomaly_map(rows: list, width=680, height=320, max_labels=4) -> str:
     svg.append(f'<text x="12" y="{height/2:.0f}" font-size="9" fill="{P["dim"]}" transform="rotate(-90 12 {height/2:.0f})" text-anchor="middle">capability index →</text>')
     svg.append("</svg>")
     return "".join(svg)
+
+
+PL, PW = 105.0, 68.0   # pitch metres — same convention as fulcrum.core / gen_gif.py, center-origin-compatible
+
+
+def counterfactual_pitch(data: dict, width=680, height=452) -> str:
+    """The real 'play sim' display for Simulate (spec §9): ONE anchor's actual twin rollout, baseline vs capability-
+    injected, both computed — never illustrative. The attacking team (the capability's subject) gets the full
+    start->baseline / start->conditioned treatment; defenders show only their conditioned reaction, small and muted,
+    as context rather than the focus (dataviz: label/emphasize selectively, not every mark equally loud)."""
+    m = 22
+    sx, sy = (width - 2 * m) / PL, (height - 2 * m) / PW
+    def X(x): return m + x * sx
+    def Y(y): return m + y * sy
+
+    svg = [f'<svg viewBox="0 0 {width} {height}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,monospace">']
+    svg.append(f'<rect x="0" y="0" width="{width}" height="{height}" fill="{P["panel"]}" rx="6"/>')
+    # pitch markings — recessive, hairline
+    LN = P["line"]
+    for a, b in [((0, 0), (PL, 0)), ((0, PW), (PL, PW)), ((0, 0), (0, PW)), ((PL, 0), (PL, PW)), ((PL / 2, 0), (PL / 2, PW))]:
+        svg.append(f'<line x1="{X(a[0]):.0f}" y1="{Y(a[1]):.0f}" x2="{X(b[0]):.0f}" y2="{Y(b[1]):.0f}" stroke="{LN}" stroke-width="1" opacity="0.7"/>')
+    svg.append(f'<circle cx="{X(PL/2):.0f}" cy="{Y(PW/2):.0f}" r="{9.15*sx:.0f}" fill="none" stroke="{LN}" stroke-width="1" opacity="0.7"/>')
+    for x0 in (0, PL - 16.5):
+        svg.append(f'<rect x="{X(x0):.0f}" y="{Y(PW/2-20.16):.0f}" width="{16.5*sx:.0f}" height="{40.32*sy:.0f}" fill="none" stroke="{LN}" stroke-width="1" opacity="0.7"/>')
+
+    if data.get("error"):
+        svg.append(f'<text x="{width/2}" y="{height/2}" font-size="11" fill="{P["mut"]}" text-anchor="middle">{data["error"]}</text></svg>')
+        return "".join(svg)
+
+    start, base, cond = data["start"], data["baseline_end"], data["conditioned_end"]
+    # defenders — conditioned reaction only, small and muted (context, not the subject)
+    for x, y in cond["dfn"]:
+        svg.append(f'<circle cx="{X(x):.0f}" cy="{Y(y):.0f}" r="4" fill="{P["mut"]}" opacity="0.55" stroke="{P["panel"]}" stroke-width="1.5"/>')
+    # attackers — start (hollow) -> baseline (muted line+dot) -> conditioned (accent line+dot)
+    for i, (sxp, syp) in enumerate(start["att"]):
+        if i < len(base["att"]):
+            bx, by = base["att"][i]
+            svg.append(f'<line x1="{X(sxp):.1f}" y1="{Y(syp):.1f}" x2="{X(bx):.1f}" y2="{Y(by):.1f}" stroke="{P["mut"]}" stroke-width="2" stroke-linecap="round" opacity="0.55"/>')
+            svg.append(f'<circle cx="{X(bx):.1f}" cy="{Y(by):.1f}" r="4" fill="{P["mut"]}" opacity="0.8" stroke="{P["panel"]}" stroke-width="1.5"/>')
+        if i < len(cond["att"]):
+            cx, cy = cond["att"][i]
+            svg.append(f'<line x1="{X(sxp):.1f}" y1="{Y(syp):.1f}" x2="{X(cx):.1f}" y2="{Y(cy):.1f}" stroke="{P["cy"]}" stroke-width="2" stroke-linecap="round"/>')
+            svg.append(f'<circle cx="{X(cx):.1f}" cy="{Y(cy):.1f}" r="4.5" fill="{P["cy"]}" stroke="{P["panel"]}" stroke-width="1.5"/>')
+        svg.append(f'<circle cx="{X(sxp):.1f}" cy="{Y(syp):.1f}" r="3.5" fill="{P["panel"]}" stroke="{P["dim"]}" stroke-width="1.5"/>')
+    for label, pts, col in (("ball baseline", base["ball"], P["mut"]), ("ball", cond["ball"], P["hi"])):
+        if pts:
+            bx, by = pts[0]
+            svg.append(f'<circle cx="{X(bx):.1f}" cy="{Y(by):.1f}" r="3" fill="{col}"/>')
+
+    svg.append(f'<g font-size="9.5">'
+              f'<circle cx="{width-190}" cy="{height-14}" r="3.5" fill="{P["panel"]}" stroke="{P["dim"]}" stroke-width="1.5"/>'
+              f'<text x="{width-182}" y="{height-11}" fill="{P["dim"]}">start</text>'
+              f'<circle cx="{width-138}" cy="{height-14}" r="4" fill="{P["mut"]}"/>'
+              f'<text x="{width-130}" y="{height-11}" fill="{P["mut"]}">baseline</text>'
+              f'<circle cx="{width-64}" cy="{height-14}" r="4.5" fill="{P["cy"]}"/>'
+              f'<text x="{width-56}" y="{height-11}" fill="{P["cy"]}">with capability</text></g>')
+    svg.append("</svg>")
+    return "".join(svg)
