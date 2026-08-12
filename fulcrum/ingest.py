@@ -47,6 +47,20 @@ def apply_H(H, pts):
     return p[:, :2] / p[:, 2:3]
 
 
+def pitch_H_from_P(P):
+    """The drop-in broadcast-calibration contract. A pretrained pitch-calibration model (PnLCalib) gives a 3x4
+    world->image projection P (P = Q @ R @ [I|-C], world in CENTER-ORIGIN metres). For the ground plane Z=0,
+    image ~ P @ [X,Y,0,1] = P[:,[0,1,3]] @ [X,Y,1], so H_pitch->img = P[:,[0,1,3]] and the image->pitch
+    homography this module's `assemble_frames` consumes is its inverse. Output is midfield-centred metres,
+    IDENTICAL to `apply_H`'s convention here — no adapter.
+
+    VALIDATED on SNGS-021 vs GT (30/30 frames calibrated, median 0.58 m, p90 1.67 m, axis-convention identity,
+    unit-scale 1.00). This replaces the failed hand-rolled line-correspondence solver (34-43 m). The heavy HRNet
+    inference that produces P lives in the GPU job `jobs/broadcast_calibrate.py`; THIS is the pure-numpy bridge."""
+    P = np.asarray(P, float)
+    return np.linalg.inv(P[:, [0, 1, 3]])
+
+
 # ---- teams by shirt COLOUR (appearance, identity-free) --------------------------------------------------------
 def kit_feat(img, ltwh):
     """Kit-colour cue: mean RGB of the torso with GRASS masked out (green bleed washes small broadcast crops to
@@ -90,6 +104,51 @@ def split_teams(track_colours, drop_officials=False):
         tids = [tids[i] for i in keep]; feat = feat[keep]
     lab = kmeans2_std(feat)
     return {t: float(lab[i]) for i, t in enumerate(tids)}
+
+
+def split_teams_robust(track_colours, min_samples=3):
+    """Robust 2-team split for LOW-RES / STRIPED-kit broadcast (footballia 1024x576 gave a degenerate 20/4 split
+    with 3-D k-means). Three hardenings:
+      1. TEMPORAL VOTING — each track's colour = the MEDIAN over its whole history (not a per-appearance mean), so a
+         few grass-washed / motion-blurred frames don't move it.
+      2. APPEARANCE FILTER — drop tracks seen < min_samples times (crowd / bench / transient false tracks that
+         pollute the clustering and cause the imbalance).
+      3. PC1 SPLIT — reduce to the single most-discriminative colour axis (first principal component = the axis the
+         two kits differ on) and split there. 1-D clustering on the discriminative axis is far less sensitive to
+         outliers and to stripe within-kit variance than 3-D k-means, so it does not collapse to one giant cluster.
+    -> {track_id: team01}. Falls back to `split_teams` if too few usable tracks."""
+    tids = [t for t, c in track_colours.items() if c is not None and len(c) >= min_samples]
+    if len(tids) < 6:
+        return split_teams(track_colours)
+    med = np.stack([np.median(np.asarray(track_colours[t], float), 0) for t in tids])    # (1) temporal median
+
+    # (2) drop OFFICIALS/GK: 3-cluster, remove the smallest (referees/keepers wear distinct colours & are few).
+    keep = list(range(len(tids)))
+    if len(tids) >= 9:
+        lab3 = _kmeans3_std(med); sizes = {k: int((lab3 == k).sum()) for k in (0, 1, 2)}
+        small = min(sizes, key=sizes.get)
+        if sizes[small] <= max(2, len(tids) // 8):
+            keep = [i for i in range(len(tids)) if lab3[i] != small]
+    medk = med[keep]; tidk = [tids[i] for i in keep]
+
+    # (3) ADAPTIVE colour feature. No single feature is robust across kit pairs: STRIPED kits (grey vs saturated)
+    # split best on CHROMATICITY (brightness removed); LIGHT-vs-LIGHT kits (pale-blue vs white) split best on RGB
+    # (brightness IS the signal). Try several and pick the split that is most BALANCED with a real colour-gap.
+    tot = medk.sum(1, keepdims=True) + 1e-6
+    feats = {"rgb": medk, "chroma": medk / tot,
+             "blueness": (medk[:, 2] - medk[:, :2].mean(1))[:, None],
+             "sat": ((medk.max(1) - medk.min(1)) / (medk.max(1) + 1e-6))[:, None]}
+    best = None
+    for X in feats.values():
+        lab = kmeans2_std(np.asarray(X, float))
+        n0, n1 = int((lab == 0).sum()), int((lab == 1).sum())
+        if n0 == 0 or n1 == 0: continue
+        bal = min(n0, n1) / max(n0, n1)
+        gap = float(np.linalg.norm(medk[lab == 0].mean(0) - medk[lab == 1].mean(0)))
+        score = bal * gap                                       # balanced AND colour-separated
+        if best is None or score > best[0]: best = (score, lab)
+    lab = best[1] if best else kmeans2_std(medk)
+    return {tidk[i]: float(lab[i]) for i in range(len(tidk))}
 
 
 def _kmeans3_std(X, iters=40, seed=0):

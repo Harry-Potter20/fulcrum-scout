@@ -1,0 +1,18 @@
+# Fulcrum Scout — Pxxl deployment config for the WEB service (Streamlit).
+# The auto-ingest webhook (app/ingest_server.py) is a SEPARATE Pxxl project from this same repo — Pxxl's
+# documented multi-service pattern (same GitHub repo, different startCommand). See app/DEPLOY.md for the full
+# walkthrough, including why: Pxxl Cron Jobs fire plain HTTP requests, and Streamlit only runs its script per
+# browser websocket session, so a cron hit against the Streamlit service's URL would never execute anything.
+
+[build]
+language = "python"
+runtime = "3.11"
+installCommand = "pip install -r requirements.txt"
+startCommand = "streamlit run app/app.py --server.port $PORT --server.address 0.0.0.0 --server.enableCORS false --server.enableXsrfProtection false --browser.gatherUsageStats false"
+
+[env]
+PYTHONUNBUFFERED = "1"
+STREAMLIT_BROWSER_GATHERUSAGESTATS = "false"
+
+# Secrets (HF_TOKEN, DATABASE_URL, FULCRUM_APP_PASSWORD) are NOT set here — pxxl.toml is committed to a public
+# repo. Set them in the Pxxl dashboard's project env vars after importing.
