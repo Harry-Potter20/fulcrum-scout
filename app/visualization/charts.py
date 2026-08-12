@@ -61,27 +61,39 @@ def bar(pct, w=180, accent=None, insufficient=False) -> str:
             f'background:{col}"></span></span>')
 
 
-def anomaly_map(rows: list, width=680, height=300) -> str:
-    """Capability (y) vs market value percentile (x). Top-left = high capability + low cost = market anomaly (§43)."""
-    m = 34
+def anomaly_map(rows: list, width=680, height=320, max_labels=4) -> str:
+    """Capability (y) vs market value percentile (x). Top-left = high capability + low cost = market anomaly (§43).
+    Labels are SELECTIVE (dataviz skill: never a number on every point) — only the top `max_labels` by anomaly get
+    a permanent label; every point still carries a native hover tooltip (<title>) so nothing is unreachable, and
+    the ranked table beneath the chart (Discover page) carries the rest. Recessive gridlines, surface-ringed dots."""
+    m = 36
     def X(vp): return m + (vp / 100) * (width - 2 * m)
     def Y(cap): return height - m - (cap / 100) * (height - 2 * m)
+    top_ids = {id(r) for r in sorted(rows, key=lambda r: -r["anomaly"])[:max_labels]}
+
     svg = [f'<svg viewBox="0 0 {width} {height}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,monospace">']
-    svg.append(f'<rect x="0" y="0" width="{width}" height="{height}" fill="{P["panel"]}"/>')
-    for g in (0, 25, 50, 75, 100):
-        svg.append(f'<line x1="{X(g):.0f}" y1="{m}" x2="{X(g):.0f}" y2="{height-m}" stroke="{P["line"]}" opacity="0.4"/>')
-        svg.append(f'<line x1="{m}" y1="{Y(g):.0f}" x2="{width-m}" y2="{Y(g):.0f}" stroke="{P["line"]}" opacity="0.4"/>')
-    # undervalued quadrant highlight (low value pct, high capability)
-    svg.append(f'<rect x="{X(0):.0f}" y="{Y(100):.0f}" width="{X(45)-X(0):.0f}" height="{Y(65)-Y(100):.0f}" fill="{P["cy"]}" opacity="0.05"/>')
-    svg.append(f'<text x="{X(2):.0f}" y="{Y(96):.0f}" font-size="9" fill="{P["cy"]}">UNDERVALUED · high capability · low cost</text>')
+    svg.append(f'<rect x="0" y="0" width="{width}" height="{height}" fill="{P["panel"]}" rx="6"/>')
+    # recessive gridlines — 0/50/100 only, hairline
+    for g in (0, 50, 100):
+        svg.append(f'<line x1="{X(g):.0f}" y1="{m}" x2="{X(g):.0f}" y2="{height-m}" stroke="{P["line"]}" stroke-width="1" opacity="0.35"/>')
+        svg.append(f'<line x1="{m}" y1="{Y(g):.0f}" x2="{width-m}" y2="{Y(g):.0f}" stroke="{P["line"]}" stroke-width="1" opacity="0.35"/>')
+    # undervalued quadrant — a quiet wash + one small corner label, not a text banner across the data
+    svg.append(f'<rect x="{X(0):.0f}" y="{Y(100):.0f}" width="{X(45)-X(0):.0f}" height="{Y(65)-Y(100):.0f}" fill="{P["cy"]}" opacity="0.045"/>')
+    svg.append(f'<text x="{X(2):.0f}" y="{Y(100)+13:.0f}" font-size="8.5" letter-spacing="0.06em" fill="{P["cy"]}" opacity="0.8">UNDERVALUED</text>')
+
     for r in rows:
         x, y = X(r["value_percentile"]), Y(r["cap_index"])
-        big = r["anomaly"] >= 25
-        c = P["cy"] if big else P["mut"]
-        svg.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="{4.5 if big else 3}" fill="{c}" opacity="{0.95 if big else 0.6}"/>')
-        if big:
-            svg.append(f'<text x="{x+6:.0f}" y="{y+3:.0f}" font-size="8.5" fill="{P["tx"]}">{r["name"].split()[-1]}</text>')
-    svg.append(f'<text x="{width/2:.0f}" y="{height-6}" font-size="9" fill="{P["dim"]}" text-anchor="middle">market value percentile →</text>')
+        labelled = id(r) in top_ids
+        c = P["cy"] if labelled else P["mut"]
+        safe_name = r["name"].replace("&", "&amp;").replace("<", "")
+        # transparent oversized hit target (≥24px) carries the hover tooltip; the visible mark stays small
+        svg.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="13" fill="transparent"><title>{safe_name} — '
+                    f'capability {r["cap_index"]:.0f}, value pct {r["value_percentile"]:.0f}, anomaly {r["anomaly"]:+.0f}</title></circle>')
+        svg.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="{4.5 if labelled else 3}" fill="{c}" opacity="{0.95 if labelled else 0.55}" '
+                    f'stroke="{P["panel"]}" stroke-width="2"/>')
+        if labelled:
+            svg.append(f'<text x="{x+7:.0f}" y="{y+3:.0f}" font-size="9" fill="{P["tx"]}">{safe_name.split()[-1]}</text>')
+    svg.append(f'<text x="{width/2:.0f}" y="{height-8}" font-size="9" fill="{P["dim"]}" text-anchor="middle">market value percentile →</text>')
     svg.append(f'<text x="12" y="{height/2:.0f}" font-size="9" fill="{P["dim"]}" transform="rotate(-90 12 {height/2:.0f})" text-anchor="middle">capability index →</text>')
     svg.append("</svg>")
     return "".join(svg)
