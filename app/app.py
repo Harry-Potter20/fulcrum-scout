@@ -111,24 +111,28 @@ with st.sidebar:
 # ================= HOME =================
 def home():
     live_n = len(c_index(ss.season))
-    st.markdown(f'''<div style="position:relative;padding:10px 0 6px;margin-bottom:4px;overflow:hidden">
-        <div style="position:absolute;top:-60px;left:-80px;width:420px;height:280px;border-radius:50%;
-                    background:radial-gradient(circle, {P["cy"]}14 0%, transparent 70%);pointer-events:none"></div>
-        <div style="position:relative;display:flex;align-items:center;gap:7px;margin-bottom:18px">
-            <span style="width:7px;height:7px;border-radius:50%;background:{P["good"]};display:inline-block;
-                        box-shadow:0 0 8px {P["good"]}"></span>
-            <span class="mono" style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:{P["good"]}">
-                live · {live_n} profiles measured this season</span>
+    st.markdown(f'''<div style="position:relative;padding:28px 0 8px;margin-bottom:4px;overflow:hidden;text-align:center">
+        <div style="position:absolute;top:-60px;left:50%;transform:translateX(-50%);width:520px;height:280px;border-radius:50%;
+                    background:radial-gradient(circle, {P["cy"]}12 0%, transparent 70%);pointer-events:none"></div>
+        <div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:14px">
+            <div style="width:44px;height:44px;border-radius:11px;background:{P['cy']}18;border:1px solid {P['cy']}55;
+                        display:flex;align-items:center;justify-content:center;font-family:{ui.MONO};font-weight:700;
+                        font-size:15px;color:{P['cy']}">Fc</div>
+            <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:7px;height:7px;border-radius:50%;background:{P["good"]};display:inline-block;
+                            box-shadow:0 0 8px {P["good"]}"></span>
+                <span class="mono" style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:{P["good"]}">
+                    live · {live_n} profiles measured this season</span>
+            </div>
+            <div style="font-family:{ui.MONO};font-weight:700;letter-spacing:-.02em;line-height:1.02;
+                        font-size:clamp(2rem,4.6vw,3.1rem)">
+                <span style="color:{P['hi']}">SCOUT BY </span><span style="color:{P['cy']}">CAPABILITY.</span>
+            </div>
+            <p style="color:{P['mut']};max-width:560px;font-size:14px;line-height:1.6">Not production.
+                Fulcrum measures the geometry and behaviour producing the numbers — <b style="color:{P['tx']}">space
+                creation</b>, <b style="color:{P['tx']}">off-ball penetration</b>, <b style="color:{P['tx']}">press
+                resistance</b> — then connects them to the tactical problem your team needs to solve.</p>
         </div>
-        <div style="position:relative;font-family:'IBM Plex Mono',monospace;font-weight:700;letter-spacing:-.02em;
-                    line-height:.98;font-size:clamp(2.4rem,5.2vw,3.6rem)">
-            <div style="color:{P['hi']}">SCOUT BY</div>
-            <div style="color:{P['cy']}">CAPABILITY.</div>
-        </div>
-        <p style="color:{P['mut']};max-width:600px;margin-top:16px;font-size:14px;line-height:1.6">Not production.
-            Fulcrum measures the geometry and behaviour producing the numbers — <b style="color:{P['tx']}">space
-            creation</b>, <b style="color:{P['tx']}">off-ball penetration</b>, <b style="color:{P['tx']}">press
-            resistance</b> — then connects them to the tactical problem your team needs to solve.</p>
     </div>''', unsafe_allow_html=True)
     # the intelligence workflow as the mental model (spec §4): find → solve → analyse → compare
     actions = [("FIND PLAYERS", "Capability-based market discovery", "Discover"),
@@ -147,13 +151,14 @@ def home():
     anoms = c_anomalies(ss.season)
     idx = c_index(ss.season)
     n_high = sum(1 for r in idx if r["cap_index"] >= 80)
+    n_leagues = len({r["league"] for r in idx if r.get("league")})
     left, right = st.columns([1, 1])
     with left:
         st.markdown('<div class="eyebrow">Market intelligence · ' + ss.season + '</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="fpanel"><div class="kv"><span class="mut">Players in pool</span><b class="mono">{len(idx)}</b></div>'
                     f'<div class="kv"><span class="mut">High-capability profiles (≥80)</span><b class="mono cy">{n_high}</b></div>'
                     f'<div class="kv"><span class="mut">Market anomalies (cap ≫ cost)</span><b class="mono cy">{sum(1 for a in anoms if a["anomaly"]>=25)}</b></div>'
-                    f'<div class="kv" style="border:0"><span class="mut">Leagues covered</span><b class="mono">8</b></div></div>',
+                    f'<div class="kv" style="border:0"><span class="mut">Leagues covered</span><b class="mono">{n_leagues}</b></div></div>',
                     unsafe_allow_html=True)
     with right:
         st.markdown('<div class="eyebrow">Top market anomaly</div>', unsafe_allow_html=True)
