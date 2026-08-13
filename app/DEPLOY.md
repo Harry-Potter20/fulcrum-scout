@@ -36,24 +36,23 @@ Project creation and database provisioning happen through the Pxxl dashboard (co
    Set its env vars: `DATABASE_URL` (same as above), `HF_TOKEN` (same), `FULCRUM_SYNC_KEY` — a *different* secret
    from `FULCRUM_APP_PASSWORD`, used to authorize the sync webhook.
 5. Deploy both. Confirm the ingest project's health: `GET https://<ingest-url>/healthz` → `{"status":"ok"}`.
-6. **Dashboard → Cron Jobs → Create** (or `pxxl cron create`): schedule a daily HTTP GET at
-   `https://<ingest-url>/sync?key=<FULCRUM_SYNC_KEY>`. This is the auto-ingest — see below for what "auto" means.
-7. Trigger it once manually (visit the URL, or `pxxl cron` run-now) to seed the database before first real use.
+6. **Dashboard → Cron Jobs → Create** (or `pxxl cron create`) — two schedules against the **ingest** project:
+   - `https://<ingest-url>/scrape?key=<FULCRUM_SYNC_KEY>` — daily (or weekly), refreshes the public Sofascore
+     dataset. Runs in a background thread server-side (several minutes; `/scrape` returns 202 immediately, poll
+     `GET /scrape/status` for `{"running": false, "last_status": "ok"}`). A second trigger while one is still
+     running gets 409, not a corrupted overlapping write.
+   - `https://<ingest-url>/sync?key=<FULCRUM_SYNC_KEY>` — daily, shortly after the scrape window; upserts the
+     refreshed dataset + the tracked Measured caps into Postgres. Fast (seconds), safe to run more often than
+     `/scrape` if wanted.
+7. Trigger `/scrape` then `/sync` once manually to seed the database before first real use.
 
 ### What "auto-ingest when the season starts" actually means here
-There is no feed that announces a season's start, so the honest version is: the cron hits `/sync` daily, which
-runs `jobs/sync_db.py` — idempotent upserts of the player pool (from the public `football-sofascore-data` HF
-dataset) and the tracked Measured caps (from the private `gsr` bucket) into Postgres. `fb_multiseason.py` (the
-actual Sofascore scraper feeding that public dataset) resolves season labels dynamically and already includes
-`26/27` in its default list — Sofascore blocks datacenter IPs, so that scraper runs from a **residential** machine
-on its own schedule (see "Local ingest source" below), not from Pxxl. Once Sofascore populates a new season, the
-next scrape picks it up, uploads it, and the next daily `/sync` absorbs it into Postgres — a season "starting" is
-absorbed within one ingest cycle, not detected in advance.
-
-### Local ingest source (residential IP required)
-`jobs/fb_multiseason.py` scrapes Sofascore and uploads to the public HF dataset the DB syncs from. Sofascore
-blocks datacenter IPs, so this must run from a residential connection — schedule it via `launchd`/cron on a home
-machine (see the repo's `Football_Research/jobs/` for the script; it already uploads its output to HF on success).
+There is no feed that announces a season's start, so the honest version is: `/scrape` runs on a fixed cadence and
+`fb_multiseason.py` resolves season labels dynamically from Sofascore's `/seasons` endpoint (already includes
+`26/27` in its default list, proactively) — so once Sofascore populates a new season, the next `/scrape` picks it
+up, uploads it to the public HF dataset, and the next `/sync` absorbs it into Postgres. A season "starting" is
+absorbed within one ingest cycle, not detected in advance. Both endpoints run on the **same** `ingest` Pxxl service
+(§ one-time setup, step 4) — no separate machine or residential IP needed.
 
 ## Cloudflare — Workers isn't a fit, but two things are worth pairing in
 **Workers/Pages cannot run this app.** Workers is a V8-isolate runtime (JS/Wasm, or Python via Pyodide) — it has
