@@ -38,7 +38,7 @@ class TacticalFit:
         self.w_pr = 0.6                                        # relational strength (validated in G1d)
 
     # ---- one conditioned multi-step rollout of a Window -> attacker/defender/ball final positions ----
-    def _rollout(self, window, cap, return_start=False):
+    def _rollout(self, window, cap, return_start=False, return_trajectory=False):
         import torch
         W = self.W
         b = W.collate([W.make_sample(window, W.RS)], W.MAX_NODES)
@@ -49,6 +49,7 @@ class TacticalFit:
         wid = float(cap.get("width", 0.0)); prs = float(cap.get("press_resistance", 0.0))
         if return_start:                                        # positions BEFORE the capability perturbs velocity —
             p0 = pos[0].detach().cpu().numpy()[:n]               # i.e. the shared starting frame (§ pitch viz)
+        traj = [pos[0].detach().cpu().numpy()[:n]] if return_trajectory else None   # step 0 = the real start frame
         # kinematic capability -> INPUT velocity perturbation on the attackers (the twin reacts to it)
         vel[0, att, 0] += fwd * SPEED_UNIT                      # forward_intent -> +x drive toward goal
         vel[0, att, 1] += wid * SPEED_UNIT                      # width -> lateral spread
@@ -64,8 +65,12 @@ class TacticalFit:
                 m = torch.zeros_like(pressure); m[0, att] = prs
                 disp = disp * (1 - (self.w_pr * m * pressure).clamp(-0.95, 0.95))[..., None]
             newpos = pos + disp; vel = (newpos - pos) / DT; pos = newpos
+            if return_trajectory:
+                traj.append(pos[0].detach().cpu().numpy()[:n])   # a REAL intermediate rollout position, not interpolated
         p = pos[0].detach().cpu().numpy()[:n]; tm = tt.detach().cpu().numpy()[:n]
         out = (p[tm == 1.0], p[tm == 0.0], p[tm == 2.0])
+        if return_trajectory:
+            return out + (([step[tm == 1.0] for step in traj], [step[tm == 0.0] for step in traj], [step[tm == 2.0] for step in traj]),)
         if return_start:
             return out + ((p0[tm == 1.0], p0[tm == 0.0], p0[tm == 2.0]),)
         return out

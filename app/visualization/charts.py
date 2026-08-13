@@ -61,39 +61,69 @@ def bar(pct, w=180, accent=None, insufficient=False) -> str:
             f'background:{col}"></span></span>')
 
 
-def anomaly_map(rows: list, width=680, height=320, max_labels=4) -> str:
-    """Capability (y) vs market value percentile (x). Top-left = high capability + low cost = market anomaly (§43).
+def anomaly_map(rows: list, width=680, height=320, max_labels=5) -> str:
+    """Capability (y) vs market value percentile (x) — DOMAIN AUTO-FITS the actual plotted rows with padding,
+    rather than a fixed 0-100 square. A pre-filtered set (e.g. a narrow age/value band, or already-anomalous
+    players) naturally clusters in real percentile space; fixing the axes to 0-100 anyway wastes most of the
+    canvas and crushes every point into one corner. Auto-fitting means the SAME points always spread across the
+    visible plot, whatever the underlying range. The quadrant split is the MEDIAN of the plotted rows, not a fixed
+    45/65 threshold, so "undervalued" always means "above-median capability, below-median cost IN THIS VIEW" —
+    still true after auto-fit.
+
     Labels are SELECTIVE (dataviz skill: never a number on every point) — only the top `max_labels` by anomaly get
-    a permanent label; every point still carries a native hover tooltip (<title>) so nothing is unreachable, and
-    the ranked table beneath the chart (Discover page) carries the rest. Recessive gridlines, surface-ringed dots."""
-    m = 36
-    def X(vp): return m + (vp / 100) * (width - 2 * m)
-    def Y(cap): return height - m - (cap / 100) * (height - 2 * m)
-    top_ids = {id(r) for r in sorted(rows, key=lambda r: -r["anomaly"])[:max_labels]}
+    a permanent label, and only if not already crowded against an earlier label (a simple pixel-distance check);
+    every point still carries a native hover tooltip (<title>) so nothing is unreachable, and the ranked list
+    beneath the chart carries the rest."""
+    if not rows:
+        return f'<svg viewBox="0 0 {width} {height}" width="100%"><rect width="{width}" height="{height}" fill="{P["panel"]}" rx="6"/></svg>'
+    m = 38
+    vps = [r["value_percentile"] for r in rows]; caps = [r["cap_index"] for r in rows]
+    pad = 8
+    vlo, vhi = max(0, min(vps) - pad), min(100, max(vps) + pad)
+    clo, chi = max(0, min(caps) - pad), min(100, max(caps) + pad)
+    if vhi - vlo < 1: vlo, vhi = max(0, vlo - 10), min(100, vhi + 10)
+    if chi - clo < 1: clo, chi = max(0, clo - 10), min(100, chi + 10)
+    vmed = sorted(vps)[len(vps) // 2]; cmed = sorted(caps)[len(caps) // 2]
+
+    def X(vp): return m + (vp - vlo) / (vhi - vlo) * (width - 2 * m)
+    def Y(cap): return height - m - (cap - clo) / (chi - clo) * (height - 2 * m)
 
     svg = [f'<svg viewBox="0 0 {width} {height}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,monospace">']
     svg.append(f'<rect x="0" y="0" width="{width}" height="{height}" fill="{P["panel"]}" rx="6"/>')
-    # recessive gridlines — 0/50/100 only, hairline
-    for g in (0, 50, 100):
-        svg.append(f'<line x1="{X(g):.0f}" y1="{m}" x2="{X(g):.0f}" y2="{height-m}" stroke="{P["line"]}" stroke-width="1" opacity="0.35"/>')
-        svg.append(f'<line x1="{m}" y1="{Y(g):.0f}" x2="{width-m}" y2="{Y(g):.0f}" stroke="{P["line"]}" stroke-width="1" opacity="0.35"/>')
-    # undervalued quadrant — a quiet wash + one small corner label, not a text banner across the data
-    svg.append(f'<rect x="{X(0):.0f}" y="{Y(100):.0f}" width="{X(45)-X(0):.0f}" height="{Y(65)-Y(100):.0f}" fill="{P["cy"]}" opacity="0.045"/>')
-    svg.append(f'<text x="{X(2):.0f}" y="{Y(100)+13:.0f}" font-size="8.5" letter-spacing="0.06em" fill="{P["cy"]}" opacity="0.8">UNDERVALUED</text>')
+    # recessive gridlines at axis extremes + the median split (which IS the quadrant boundary now)
+    for g in (vlo, vmed, vhi):
+        svg.append(f'<line x1="{X(g):.0f}" y1="{m}" x2="{X(g):.0f}" y2="{height-m}" stroke="{P["line"]}" stroke-width="1" opacity="0.3"/>')
+    for g in (clo, cmed, chi):
+        svg.append(f'<line x1="{m}" y1="{Y(g):.0f}" x2="{width-m}" y2="{Y(g):.0f}" stroke="{P["line"]}" stroke-width="1" opacity="0.3"/>')
+    # undervalued quadrant — median split, a quiet wash + one small corner label
+    svg.append(f'<rect x="{X(vlo):.0f}" y="{Y(chi):.0f}" width="{X(vmed)-X(vlo):.0f}" height="{Y(cmed)-Y(chi):.0f}" fill="{P["cy"]}" opacity="0.045"/>')
+    svg.append(f'<text x="{X(vlo)+6:.0f}" y="{Y(chi)+13:.0f}" font-size="8.5" letter-spacing="0.06em" fill="{P["cy"]}" opacity="0.8">UNDERVALUED</text>')
+
+    # selective labels: top-anomaly first, skip any candidate whose mark would sit within 26px of an already-placed label
+    placed = []
+    label_ids = set()
+    for r in sorted(rows, key=lambda r: -r["anomaly"]):
+        if len(label_ids) >= max_labels:
+            break
+        x, y = X(r["value_percentile"]), Y(r["cap_index"])
+        if all((x - px) ** 2 + (y - py) ** 2 > 26 ** 2 for px, py in placed):
+            placed.append((x, y)); label_ids.add(id(r))
 
     for r in rows:
         x, y = X(r["value_percentile"]), Y(r["cap_index"])
-        labelled = id(r) in top_ids
+        labelled = id(r) in label_ids
         c = P["cy"] if labelled else P["mut"]
         safe_name = r["name"].replace("&", "&amp;").replace("<", "")
         # transparent oversized hit target (≥24px) carries the hover tooltip; the visible mark stays small
         svg.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="13" fill="transparent"><title>{safe_name} — '
                     f'capability {r["cap_index"]:.0f}, value pct {r["value_percentile"]:.0f}, anomaly {r["anomaly"]:+.0f}</title></circle>')
-        svg.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="{4.5 if labelled else 3}" fill="{c}" opacity="{0.95 if labelled else 0.55}" '
+        svg.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="{4.5 if labelled else 3}" fill="{c}" opacity="{0.95 if labelled else 0.5}" '
                     f'stroke="{P["panel"]}" stroke-width="2"/>')
         if labelled:
-            svg.append(f'<text x="{x+7:.0f}" y="{y+3:.0f}" font-size="9" fill="{P["tx"]}">{safe_name.split()[-1]}</text>')
-    svg.append(f'<text x="{width/2:.0f}" y="{height-8}" font-size="9" fill="{P["dim"]}" text-anchor="middle">market value percentile →</text>')
+            anchor = "end" if x > width - 90 else "start"
+            dx = -7 if anchor == "end" else 7
+            svg.append(f'<text x="{x+dx:.0f}" y="{y+3:.0f}" font-size="9" fill="{P["tx"]}" text-anchor="{anchor}">{safe_name.split()[-1]}</text>')
+    svg.append(f'<text x="{width/2:.0f}" y="{height-8}" font-size="9" fill="{P["dim"]}" text-anchor="middle">market value percentile → (range {vlo:.0f}-{vhi:.0f})</text>')
     svg.append(f'<text x="12" y="{height/2:.0f}" font-size="9" fill="{P["dim"]}" transform="rotate(-90 12 {height/2:.0f})" text-anchor="middle">capability index →</text>')
     svg.append("</svg>")
     return "".join(svg)
@@ -102,11 +132,33 @@ def anomaly_map(rows: list, width=680, height=320, max_labels=4) -> str:
 PL, PW = 105.0, 68.0   # pitch metres — same convention as fulcrum.core / gen_gif.py, center-origin-compatible
 
 
-def counterfactual_pitch(data: dict, width=680, height=452) -> str:
-    """The real 'play sim' display for Simulate (spec §9): ONE anchor's actual twin rollout, baseline vs capability-
-    injected, both computed — never illustrative. The attacking team (the capability's subject) gets the full
-    start->baseline / start->conditioned treatment; defenders show only their conditioned reaction, small and muted,
-    as context rather than the focus (dataviz: label/emphasize selectively, not every mark equally loud)."""
+def _motion_dot(X, Y, traj, *, r, fill, stroke, stroke_w, dur, opacity=1.0):
+    """A circle placed at the trajectory's start, animated through every REMAINING real step via <animateMotion> on
+    a RELATIVE path (each waypoint expressed as a delta from the previous one, per SVG path semantics) — a genuine
+    frame-by-frame replay of the twin's own intermediate output, not a tween fabricated between two endpoints."""
+    if not traj:
+        return ""
+    x0, y0 = X(traj[0][0]), Y(traj[0][1])
+    pts = [(X(x), Y(y)) for x, y in traj]
+    d = f"M0,0"
+    for i in range(1, len(pts)):
+        dx, dy = pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]
+        d += f" l{dx:.2f},{dy:.2f}"
+    n = len(pts)
+    key_times = ";".join(f"{i/(n-1):.3f}" for i in range(n)) if n > 1 else "0"
+    return (f'<circle cx="{x0:.1f}" cy="{y0:.1f}" r="{r}" fill="{fill}" opacity="{opacity}" '
+            f'stroke="{stroke}" stroke-width="{stroke_w}">'
+            f'<animateMotion path="{d}" dur="{dur}s" repeatCount="indefinite" calcMode="linear" '
+            f'keyTimes="{key_times}" keyPoints="{key_times}"/></circle>')
+
+
+def counterfactual_pitch(data: dict, width=680, height=452, dur=2.6) -> str:
+    """The real 'play sim' display for Simulate (spec §9): ONE anchor's actual twin rollout, ANIMATED frame-by-frame
+    through every real intermediate step (not just start/end) — baseline vs capability-injected, both computed,
+    playing simultaneously so the divergence is visible as motion, not just a static delta. A faint static trail
+    under each dot keeps the full path legible even off-animation (a screenshot, or reduced-motion). The attacking
+    team (the capability's subject) gets the full treatment; defenders show only their conditioned reaction, small
+    and muted, as context rather than the focus (dataviz: emphasize selectively, not every mark equally loud)."""
     m = 22
     sx, sy = (width - 2 * m) / PL, (height - 2 * m) / PW
     def X(x): return m + x * sx
@@ -126,25 +178,34 @@ def counterfactual_pitch(data: dict, width=680, height=452) -> str:
         svg.append(f'<text x="{width/2}" y="{height/2}" font-size="11" fill="{P["mut"]}" text-anchor="middle">{data["error"]}</text></svg>')
         return "".join(svg)
 
-    start, base, cond = data["start"], data["baseline_end"], data["conditioned_end"]
-    # defenders — conditioned reaction only, small and muted (context, not the subject)
-    for x, y in cond["dfn"]:
-        svg.append(f'<circle cx="{X(x):.0f}" cy="{Y(y):.0f}" r="4" fill="{P["mut"]}" opacity="0.55" stroke="{P["panel"]}" stroke-width="1.5"/>')
-    # attackers — start (hollow) -> baseline (muted line+dot) -> conditioned (accent line+dot)
-    for i, (sxp, syp) in enumerate(start["att"]):
-        if i < len(base["att"]):
-            bx, by = base["att"][i]
-            svg.append(f'<line x1="{X(sxp):.1f}" y1="{Y(syp):.1f}" x2="{X(bx):.1f}" y2="{Y(by):.1f}" stroke="{P["mut"]}" stroke-width="2" stroke-linecap="round" opacity="0.55"/>')
-            svg.append(f'<circle cx="{X(bx):.1f}" cy="{Y(by):.1f}" r="4" fill="{P["mut"]}" opacity="0.8" stroke="{P["panel"]}" stroke-width="1.5"/>')
-        if i < len(cond["att"]):
-            cx, cy = cond["att"][i]
-            svg.append(f'<line x1="{X(sxp):.1f}" y1="{Y(syp):.1f}" x2="{X(cx):.1f}" y2="{Y(cy):.1f}" stroke="{P["cy"]}" stroke-width="2" stroke-linecap="round"/>')
-            svg.append(f'<circle cx="{X(cx):.1f}" cy="{Y(cy):.1f}" r="4.5" fill="{P["cy"]}" stroke="{P["panel"]}" stroke-width="1.5"/>')
-        svg.append(f'<circle cx="{X(sxp):.1f}" cy="{Y(syp):.1f}" r="3.5" fill="{P["panel"]}" stroke="{P["dim"]}" stroke-width="1.5"/>')
-    for label, pts, col in (("ball baseline", base["ball"], P["mut"]), ("ball", cond["ball"], P["hi"])):
-        if pts:
-            bx, by = pts[0]
-            svg.append(f'<circle cx="{X(bx):.1f}" cy="{Y(by):.1f}" r="3" fill="{col}"/>')
+    base, cond = data["baseline"], data["conditioned"]
+
+    def trail(traj, col, op):
+        if len(traj) < 2:
+            return ""
+        pts = " ".join(f"{X(x):.1f},{Y(y):.1f}" for x, y in traj)
+        return f'<polyline points="{pts}" fill="none" stroke="{col}" stroke-width="1.5" opacity="{op}" stroke-linecap="round"/>'
+
+    # defenders — conditioned reaction only, small and muted, animated but understated (context, not the subject)
+    for traj in cond["dfn"]:
+        svg.append(trail(traj, P["mut"], 0.18))
+        svg.append(_motion_dot(X, Y, traj, r=3.5, fill=P["mut"], stroke=P["panel"], stroke_w=1.2, dur=dur, opacity=0.55))
+    # attackers — hollow start marker (static) + baseline (muted, animated) + conditioned (accent, animated) playing together
+    for i in range(len(base["att"])):
+        b_traj = base["att"][i]
+        if b_traj:
+            svg.append(trail(b_traj, P["mut"], 0.28))
+            svg.append(_motion_dot(X, Y, b_traj, r=4, fill=P["mut"], stroke=P["panel"], stroke_w=1.5, dur=dur, opacity=0.85))
+        if i < len(cond["att"]) and cond["att"][i]:
+            c_traj = cond["att"][i]
+            svg.append(trail(c_traj, P["cy"], 0.45))
+            svg.append(_motion_dot(X, Y, c_traj, r=4.5, fill=P["cy"], stroke=P["panel"], stroke_w=1.5, dur=dur))
+        if b_traj:
+            sxp, syp = b_traj[0]
+            svg.append(f'<circle cx="{X(sxp):.1f}" cy="{Y(syp):.1f}" r="3.5" fill="{P["panel"]}" stroke="{P["dim"]}" stroke-width="1.5"/>')
+    for balls, col in ((base["ball"], P["mut"]), (cond["ball"], P["hi"])):
+        if balls and balls[0]:
+            svg.append(_motion_dot(X, Y, balls[0], r=3, fill=col, stroke="none", stroke_w=0, dur=dur))
 
     svg.append(f'<g font-size="9.5">'
               f'<circle cx="{width-190}" cy="{height-14}" r="3.5" fill="{P["panel"]}" stroke="{P["dim"]}" stroke-width="1.5"/>'

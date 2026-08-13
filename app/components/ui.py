@@ -18,37 +18,55 @@ _BADGE = {
 
 
 MONO = "'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace"
+SANS = "'IBM Plex Sans', -apple-system, 'Helvetica Neue', Arial, sans-serif"
 
 
 def inject_css():
     st.markdown(f"""<style>
-      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap');
 
       .stApp {{
         background:
-          linear-gradient(180deg, {P['bg']} 0%, #060910 100%),
-          repeating-linear-gradient(0deg, transparent 0px, transparent 31px, {P['line']}14 32px);
-        color:{P['tx']}; font-family:{MONO};
+          radial-gradient(ellipse 1000px 620px at 6% -8%, {P['cy']}12 0%, transparent 58%),
+          linear-gradient(180deg, {P['bg']} 0%, #060910 100%);
+        color:{P['tx']}; font-family:{SANS};
       }}
-      .block-container {{ padding-top:2.4rem; max-width:1200px; }}
+      /* kill Streamlit's own chrome — header bar, Deploy button, hamburger menu, footer, the default top gap */
+      header[data-testid="stHeader"] {{ display:none; }}
+      #MainMenu {{ visibility:hidden; }}
+      footer {{ display:none; }}
+      .stAppDeployButton {{ display:none; }}
+      div[data-testid="stDecoration"] {{ display:none; }}
+      div[data-testid="stToolbar"] {{ display:none; }}
+      .block-container {{ padding-top:2.6rem; padding-bottom:3rem; max-width:1160px; }}
       * {{ font-variant-numeric: tabular-nums; }}
-      h1 {{ color:{P['hi']}; font-family:{MONO}; font-weight:700; letter-spacing:-.01em; font-size:2.1rem !important; }}
-      h2,h3,h4 {{ color:{P['hi']}; font-family:{MONO}; font-weight:600; letter-spacing:0; }}
-      p, div, span, label {{ font-family:{MONO}; }}
+      /* native inputs/selects — match the card system instead of Streamlit's generic form chrome */
+      div[data-baseweb="select"] > div, div[data-baseweb="base-input"], .stTextInput input {{
+        background:{P['panel2']} !important; border:1px solid {P['line']} !important; border-radius:6px !important;
+        font-family:{MONO} !important; color:{P['tx']} !important;
+      }}
+      div[data-baseweb="select"] > div:hover, .stTextInput input:hover {{ border-color:{P['cy']}66 !important; }}
+      div[data-baseweb="popover"] {{ background:{P['panel2']}; border:1px solid {P['line']}; }}
+      li[role="option"] {{ font-family:{MONO}; }}
+      li[role="option"]:hover, li[aria-selected="true"] {{ background:{P['cy']}18 !important; }}
+      label p {{ font-family:{MONO} !important; font-size:11.5px !important; color:{P['mut']} !important;
+                 letter-spacing:.03em; text-transform:uppercase; }}
+      h1 {{ color:{P['hi']}; font-family:{SANS}; font-weight:800; letter-spacing:-.02em; font-size:2.3rem !important; }}
+      h2,h3,h4 {{ color:{P['hi']}; font-family:{SANS}; font-weight:700; letter-spacing:-.01em; }}
+      p, div, span, label {{ font-family:{SANS}; }}
       .eyebrow {{ font-family:{MONO}; font-size:10px; font-weight:600; letter-spacing:.24em; text-transform:uppercase;
                   color:{P['cy']}; border-left:2px solid {P['cy']}55; padding-left:7px; }}
       .mut {{ color:{P['mut']}; }} .cy {{ color:{P['cy']}; }} .mag {{ color:{P['mag']}; }}
-      .fpanel {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:8px; padding:18px 20px;
-                 box-shadow: inset 0 1px 0 #ffffff06; }}
+      .fpanel {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:8px; padding:18px 20px; }}
       .fcard {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:8px; padding:14px 16px;
-                transition:border-color .15s, transform .1s; box-shadow: inset 0 1px 0 #ffffff06; }}
+                transition:border-color .15s; }}
       .fcard:hover {{ border-color:{P['cy']}55; }}
       .badge {{ display:inline-block; font-family:{MONO}; font-size:9.5px; font-weight:500; letter-spacing:.1em;
                 text-transform:uppercase; padding:2px 7px; border-radius:4px; border:1px solid; margin-right:5px; }}
       .kv {{ display:flex; justify-content:space-between; align-items:center; padding:6.5px 0;
              border-bottom:1px solid {P['line']}55; font-size:13px; }}
       .mono {{ font-family:{MONO}; }}
-      .scnum {{ font-family:{MONO}; font-size:27px; font-weight:700; line-height:1; letter-spacing:-.01em; }}
+      .scnum {{ font-family:{MONO}; font-size:30px; font-weight:700; line-height:1; letter-spacing:-.01em; }}
       .sclab {{ font-family:{MONO}; font-size:8.5px; font-weight:600; letter-spacing:.17em; color:{P['mut']};
                 text-transform:uppercase; }}
       .stButton>button {{ background:{P['panel2']}; color:{P['tx']}; border:1px solid {P['line']};
@@ -57,6 +75,13 @@ def inject_css():
       .stButton>button[kind="primary"] {{ background:{P['cy']}14; border-color:{P['cy']}; color:{P['cy']}; }}
       .stButton>button[kind="primary"]:hover {{ background:{P['cy']}22; }}
       section[data-testid="stSidebar"] {{ background:{P['panel']}; border-right:1px solid {P['line']}; }}
+      .stTabs [data-baseweb="tab-list"] {{ gap:4px; border-bottom:1px solid {P['line']}; }}
+      .stTabs [data-baseweb="tab"] {{ font-family:{MONO}; color:{P['mut']}; }}
+      .stTabs [aria-selected="true"] {{ color:{P['cy']} !important; }}
+      .stTabs [data-baseweb="tab-highlight"] {{ background-color:{P['cy']} !important; }}
+      .stTabs [data-baseweb="tab-border"] {{ background-color:{P['line']} !important; }}
+      .stSlider [data-baseweb="slider"] div[role="slider"] {{ background-color:{P['cy']} !important; }}
+      .stSlider div[data-testid="stTickBarMin"], .stSlider div[data-testid="stTickBarMax"] {{ color:{P['mut']}; }}
       table {{ border-collapse:collapse; width:100%; }}
       th {{ text-align:right; font-family:{MONO}; font-size:10px; font-weight:600; letter-spacing:.08em;
             color:{P['mut']}; text-transform:uppercase; padding:6px 10px; border-bottom:1px solid {P['line']}; }}
@@ -116,7 +141,7 @@ def capability_panel(profile: dict):
 
 def player_row(r: dict, prefix: str = ""):
     """Compact discover/list row: name, archetype, decomposed scorecard, open button."""
-    c1, c2, c3 = st.columns([3, 3, 1])
+    c1, c2, c3 = st.columns([3, 2.6, 0.9])
     with c1:
         st.markdown(f'**{r["name"]}**  \n<span class="mut mono" style="font-size:11px">{r.get("league","")} · '
                     f'{r.get("age","?")}y · €{r.get("value_m","?")}M · {r.get("archetype","")}</span>',

@@ -88,11 +88,13 @@ def discover(season: str, *, min_minutes=8.0, max_age=40, max_value_m=1e9, leagu
         if pa.get("pct") is None:
             continue
         sc = scorecard(r, season)
+        vp = D.value_percentile(r, season)
         rows.append({"name": r["name"], "league": r.get("league"), "age": r.get("age"),
                      "value_m": round(float(r.get("market_value", 0) or 0) / 1e6, 1),
                      "priority_pct": pa["pct"], "scorecard": sc,
                      "archetype": D.archetype(r, season)["primary"],
-                     "anomaly": round(pa["pct"] - D.value_percentile(r, season), 1)})
+                     "cap_index": D.capability_index(r, season), "value_percentile": vp,
+                     "anomaly": round(pa["pct"] - vp, 1)})
     rows.sort(key=lambda x: -x["priority_pct"])
     return rows[:top]
 

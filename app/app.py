@@ -56,6 +56,15 @@ def c_measured_seqs(): return measured.sequences()
 ss = st.session_state
 ss.setdefault("page", "Home"); ss.setdefault("player", None); ss.setdefault("season", S.DEFAULT_SEASON)
 
+# deep-linkable pages: ?page=Discover (and optionally &player=Name) seeds session state once per fresh session —
+# a normal UI navigation aid, unrelated to the ingest-webhook constraint noted above (that's about a stateless CRON
+# GET never reaching a websocket-driven script at all; this only ever runs inside an actual live browser session).
+if "page" in st.query_params and not ss.get("_qp_applied"):
+    ss.page = st.query_params["page"]
+    if "player" in st.query_params:
+        ss.player = st.query_params["player"]
+    ss._qp_applied = True
+
 
 def goto(page, player=None):
     ss.page = page
@@ -194,7 +203,9 @@ def discover():
     st.markdown(f'<div class="mut mono" style="font-size:11px;margin:6px 0 2px">{len(rows)} players · ranked by '
                 f'{S.CAP_AXES[axis]["label"]} · {ui.tier_badge(S.CAP_AXES[axis]["registry_key"])}</div>', unsafe_allow_html=True)
     st.markdown('<div class="eyebrow" style="margin-top:14px">Market map · capability vs cost</div>', unsafe_allow_html=True)
-    st.markdown(charts.anomaly_map(c_anomalies(ss.season)), unsafe_allow_html=True)
+    st.markdown(f'<div class="mut mono" style="font-size:10px;margin-bottom:4px">the same {len(rows)} players as '
+                f'the list below — filters apply to both</div>', unsafe_allow_html=True)
+    st.markdown(charts.anomaly_map(rows), unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
     for r in rows[:25]:
         if ui.player_row(r, prefix="disc"): goto("Player", r["name"])
@@ -348,10 +359,10 @@ def simulate_page():
                 pv = ss.get("cf_pitch")
                 if pv:
                     st.markdown(charts.counterfactual_pitch(pv), unsafe_allow_html=True)
-                    st.markdown(f'<div class="mut mono" style="font-size:10px;margin-top:4px">Hollow = start · muted line = '
-                                f'baseline rollout (no capability) · {"" if pv.get("error") else "cyan"} line = with the '
-                                f'injected capability — defenders shown at their conditioned reaction only.</div>',
-                                unsafe_allow_html=True)
+                    st.markdown(f'<div class="mut mono" style="font-size:10px;margin-top:4px">Animated · hollow = start · '
+                                f'muted = baseline rollout (no capability) · cyan = with the injected capability — both '
+                                f'play the twin\'s real intermediate steps, not a tween. Defenders shown at their '
+                                f'conditioned reaction only.</div>', unsafe_allow_html=True)
 
 
 # ================= SOLVE (tactical fit) =================

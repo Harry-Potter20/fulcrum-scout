@@ -101,12 +101,22 @@ def _pts(arr) -> list:
     return [[round(float(x), 2), round(float(y), 2)] for x, y in arr]
 
 
+def _traj_pts(steps: list) -> list:
+    """A trajectory's `steps` = T arrays of shape (N,2) (one per rollout timestep, all REAL twin output) -> N
+    per-player sequences of T [x,y] pairs, i.e. transposed so each player carries their own frame-by-frame path —
+    exactly what an SVG <animate> needs for its `values` keyframe list."""
+    if not steps:
+        return []
+    n = len(steps[0])
+    return [[[round(float(step[i][0]), 2), round(float(step[i][1]), 2)] for step in steps] for i in range(n)]
+
+
 def rollout_for_viz(capability: dict, seq: str = ANCHOR_SEQ_DEFAULT, anchor_index: int = 0) -> dict:
-    """ONE real anchor's actual before/after positions — baseline (no capability) vs conditioned (capability
-    injected) — for the pitch visualization. Every point returned is a REAL computed rollout position (the twin's
-    own output), never an illustrative/synthetic one: this is what makes the pitch honest rather than a mockup.
-    Baseline and conditioned share the same starting frame (the capability only perturbs the initial velocity, so
-    position at t0 is identical either way) — returned once as `start`."""
+    """ONE real anchor's actual FRAME-BY-FRAME trajectory — baseline (no capability) vs conditioned (capability
+    injected) — for the animated pitch. Every position at every step is a REAL rollout output (the twin's own
+    intermediate state, not an interpolation/illustration): this is what makes the animation honest, not a tween
+    between two endpoints. Baseline and conditioned share the same starting frame (the capability only perturbs
+    the initial velocity, so step 0 is identical either way)."""
     if not available():
         return {"error": "simulation engine unavailable in this environment (torch/HF token not present)"}
     try:
@@ -115,13 +125,13 @@ def rollout_for_viz(capability: dict, seq: str = ANCHOR_SEQ_DEFAULT, anchor_inde
         if not anchors or anchor_index >= len(anchors):
             return {"error": f"no anchor #{anchor_index} available in {seq}"}
         window = anchors[anchor_index]
-        att0, dfn0, ball0, start0 = eng._rollout(window, {}, return_start=True)
-        att1, dfn1, ball1, _ = eng._rollout(window, capability, return_start=True)
+        _, _, _, traj0 = eng._rollout(window, {}, return_trajectory=True)
+        _, _, _, traj1 = eng._rollout(window, capability, return_trajectory=True)
+        n_steps = len(traj0[0]) if traj0[0] else 0   # traj0[0] = attackers' per-step array list; its length is T
         return {
-            "seq": seq, "anchor_index": anchor_index, "capability": capability,
-            "start": {"att": _pts(start0[0]), "dfn": _pts(start0[1]), "ball": _pts(start0[2])},
-            "baseline_end": {"att": _pts(att0), "dfn": _pts(dfn0), "ball": _pts(ball0)},
-            "conditioned_end": {"att": _pts(att1), "dfn": _pts(dfn1), "ball": _pts(ball1)},
+            "seq": seq, "anchor_index": anchor_index, "capability": capability, "n_steps": n_steps,
+            "baseline": {"att": _traj_pts(traj0[0]), "dfn": _traj_pts(traj0[1]), "ball": _traj_pts(traj0[2])},
+            "conditioned": {"att": _traj_pts(traj1[0]), "dfn": _traj_pts(traj1[1]), "ball": _traj_pts(traj1[2])},
         }
     except Exception as e:
         return {"error": f"simulation failed: {e}"}
