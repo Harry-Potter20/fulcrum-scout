@@ -71,6 +71,13 @@ CAPABILITIES = {
         "metric": "durable defensive gap (not transient)", "method": "persistence-filtered topology",
         "evidence": "face-valid, outcome validation pending", "say": "durable exploitable gaps in a defensive block",
         "dont_say": "proven outcome predictor"},
+    "shape_influence": {
+        "status": FACE_VALID, "headline": "Shape influence",
+        "metric": "|Δcompactness| + |Δwidth| on removal", "method": "M.shape_influence — remove-and-recompute on "
+                  "the player's own team's positional spread (possession-independent, no find_holes call)",
+        "evidence": "face-valid mechanism, not outcome-validated — no production proxy exists, Measured-only",
+        "say": "how much this player's positioning holds their team's shape together",
+        "dont_say": "a stable measure of skill independent of tactical setup — it is influenced by role and system"},
     # ---- the counterfactual: mechanism validated, SIGNING IMPACT is the gated claim (§32/62/63) ----
     "counterfactual_mechanism_attack": {
         "status": EXPERIMENTAL, "headline": "Counterfactual · attack (mechanism)",

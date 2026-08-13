@@ -505,43 +505,110 @@ def compare_page():
 
     r = compare.compare(picks, ss.season)
     names = r["names"]
+    colors = r["colors"]
     if r.get("divergence"):
         d = r["divergence"]
         st.markdown(f'<div class="fpanel"><span class="eyebrow">Mechanism divergence</span>'
                     f'<div style="font-size:13px;margin-top:6px;color:{P["tx"]}">{names[0].split()[-1]} leads via '
-                    f'<b class="cy">{d["a_leads"]}</b>; {names[1].split()[-1]} leads via <b class="cy">{d["b_leads"]}</b> — '
-                    f'similar output can come from different geometry.</div></div>', unsafe_allow_html=True)
+                    f'<b style="color:{colors[names[0]]}">{d["a_leads"]}</b>; {names[1].split()[-1]} leads via '
+                    f'<b style="color:{colors[names[1]]}">{d["b_leads"]}</b> — similar output can come from different '
+                    f'geometry — <i>this is exactly what a box score can\'t show you.</i></div></div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="eyebrow" style="margin-top:16px">Mechanism</div>', unsafe_allow_html=True)
-    cols = st.columns(len(names))
-    for col, n in zip(cols, names):
-        with col:
-            st.markdown(f'<div class="fcard" style="min-height:100px"><b style="font-size:13px">{n}</b>'
-                        f'<div class="mut" style="font-size:12px;margin-top:6px;line-height:1.5">{r["mechanism"][n]}</div></div>',
+    st.markdown('<div class="eyebrow" style="margin-top:18px">Capability overlay</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns([1, 1.15])
+    with c1:
+        st.markdown(charts.capability_radar_multi(r["profiles"], colors), unsafe_allow_html=True)
+    with c2:
+        if len(names) == 2:
+            st.markdown(charts.capability_delta_bars(names[0], r["profiles"][names[0]], names[1],
+                                                      r["profiles"][names[1]], colors[names[0]], colors[names[1]]),
                         unsafe_allow_html=True)
+            st.markdown(f'<div class="mut mono" style="font-size:10px;margin-top:2px">sorted by |gap| · axes with '
+                        f'insufficient evidence for either player are omitted, not shown as a false 0</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="eyebrow">Mechanism</div>', unsafe_allow_html=True)
+            for n in names:
+                st.markdown(f'<div class="fcard" style="margin-top:8px;border-left:3px solid {colors[n]}">'
+                            f'<b style="font-size:13px">{n}</b><div class="mut" style="font-size:12px;margin-top:4px;'
+                            f'line-height:1.5">{r["mechanism"][n]}</div></div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="eyebrow" style="margin-top:16px">Capability matrix</div>', unsafe_allow_html=True)
-    header = "".join(f'<th style="text-align:right;padding:4px 10px;font-size:10.5px;color:' + P["mut"] + f'">{n.split()[-1]}</th>' for n in names)
+    if len(names) == 2:
+        st.markdown('<div class="eyebrow" style="margin-top:16px">Mechanism</div>', unsafe_allow_html=True)
+        cols = st.columns(len(names))
+        for col, n in zip(cols, names):
+            with col:
+                st.markdown(f'<div class="fcard" style="min-height:100px;border-left:3px solid {colors[n]}">'
+                            f'<b style="font-size:13px">{n}</b><div class="mut" style="font-size:12px;margin-top:6px;'
+                            f'line-height:1.5">{r["mechanism"][n]}</div></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="eyebrow" style="margin-top:18px">Capability matrix</div>', unsafe_allow_html=True)
+    header = "".join(f'<th style="text-align:right;padding:4px 10px;font-size:10.5px;color:{colors[n]}">{n.split()[-1]}</th>' for n in names)
     rows_html = ""
     for row in r["matrix"]:
         cells = "".join(
             f'<td style="text-align:right;padding:4px 10px;font-family:ui-monospace,monospace;'
-            f'color:{P["cy"] if (row.get(n) or 0)>=80 else P["tx"]}">{f"{row[n]:.0f}" if row.get(n) is not None else "n/a"}</td>'
+            f'color:{colors[n] if (row.get(n) or 0)>=80 else P["tx"]}">{f"{row[n]:.0f}" if row.get(n) is not None else "n/a"}</td>'
             for n in names)
         rows_html += (f'<tr style="border-bottom:1px solid {P["line"]}66"><td style="padding:4px 10px;font-size:12.5px">'
                       f'{row["label"]} {ui.tier_badge(row["registry_key"])}</td>{cells}</tr>')
     st.markdown(f'<table style="width:100%;border-collapse:collapse"><thead><tr><th></th>{header}</tr></thead>'
                 f'<tbody>{rows_html}</tbody></table>', unsafe_allow_html=True)
 
-    st.markdown('<div class="eyebrow" style="margin-top:16px">Production · context, not the product</div>', unsafe_allow_html=True)
-    header2 = "".join(f'<th style="text-align:right;padding:4px 10px;font-size:10.5px;color:' + P["mut"] + f'">{n.split()[-1]}</th>' for n in names)
-    rows2 = ""
-    for row in r["production"]:
-        cells = "".join(f'<td style="text-align:right;padding:4px 10px;font-family:ui-monospace,monospace;color:{P["tx"]}">'
-                        f'{row[n] if row.get(n) is not None else "n/a"}</td>' for n in names)
-        rows2 += f'<tr style="border-bottom:1px solid {P["line"]}44"><td style="padding:4px 10px;font-size:12px;color:{P["mut"]}">{row["label"]}</td>{cells}</tr>'
-    st.markdown(f'<table style="width:100%;border-collapse:collapse"><thead><tr><th></th>{header2}</tr></thead>'
-                f'<tbody>{rows2}</tbody></table>', unsafe_allow_html=True)
+    st.markdown(f'<div class="eyebrow" style="margin-top:18px">Production · context, not the product</div>'
+                f'<div class="mut mono" style="font-size:10px;margin-top:3px">every stat carries percentile + rank '
+                f'within the {r["pool_size"]}-player pool — a number alone means nothing</div>', unsafe_allow_html=True)
+
+    ctl = st.columns([1.2, 1.6, 1, 1])
+    with ctl[0]:
+        preset = st.selectbox("Stat preset", list(compare.STAT_PRESETS), key="cmp_preset")
+    with ctl[1]:
+        view = st.radio("View", ["Table", "Bars"], key="cmp_view", horizontal=True, label_visibility="visible")
+    with ctl[2]:
+        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+        st.download_button("⬇ JSON", compare.report_json(r, ss.season), file_name=f"fulcrum_compare_{'_vs_'.join(n.split()[-1] for n in names)}.json",
+                           mime="application/json", key="cmp_dl_json", use_container_width=True)
+    with ctl[3]:
+        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+        st.download_button("⬇ CSV", compare.report_csv(r), file_name=f"fulcrum_compare_{'_vs_'.join(n.split()[-1] for n in names)}.csv",
+                           mime="text/csv", key="cmp_dl_csv", use_container_width=True)
+
+    active_cats = set(compare.STAT_PRESETS[preset])
+    for cat in r["production"]:
+        if cat["category"] not in active_cats:
+            continue
+        st.markdown(f'<div style="margin-top:12px;font-size:12px;font-weight:700;color:{P["hi"]}">{cat["category"]}</div>', unsafe_allow_html=True)
+        if view == "Table":
+            header2 = "".join(f'<th style="text-align:right;padding:4px 10px;font-size:10.5px;color:{colors[n]}">{n.split()[-1]}</th>' for n in names)
+            rows2 = ""
+            for row in cat["rows"]:
+                cells = ""
+                for n in names:
+                    cell = row.get(n)
+                    if not cell or cell.get("value") is None:
+                        cells += f'<td style="text-align:right;padding:4px 10px;color:{P["mut"]}">n/a</td>'
+                        continue
+                    pct = cell["pct"]
+                    pct_txt = f'{pct:.0f}th · #{cell["rank"]}' if pct is not None else "—"
+                    col = colors[n] if (pct or 0) >= 80 else P["tx"]
+                    cells += (f'<td style="text-align:right;padding:4px 10px;font-family:ui-monospace,monospace;color:{col}">'
+                             f'{cell["value"]}<div class="mut" style="font-size:9px;font-weight:400">{pct_txt}</div></td>')
+                rows2 += f'<tr style="border-bottom:1px solid {P["line"]}44"><td style="padding:4px 10px;font-size:12px;color:{P["mut"]}">{row["label"]}</td>{cells}</tr>'
+            st.markdown(f'<table style="width:100%;border-collapse:collapse"><thead><tr><th></th>{header2}</tr></thead>'
+                        f'<tbody>{rows2}</tbody></table>', unsafe_allow_html=True)
+        else:   # Bars — percentile bars per stat per player, faster to scan than a numeric grid
+            rows_html = []
+            for row in cat["rows"]:
+                bars = []
+                for n in names:
+                    cell = row.get(n)
+                    pct = cell["pct"] if cell else None
+                    bars.append(f'<div style="display:flex;align-items:center;gap:6px;margin-top:2px">'
+                               f'<span style="width:64px;font-size:9.5px;color:{colors[n]}">{n.split()[-1]}</span>'
+                               f'{charts.bar(pct, w=140, accent=colors[n], insufficient=pct is None)}'
+                               f'<span class="mono" style="font-size:9.5px;color:{P["mut"]}">'
+                               f'{f"{pct:.0f}" if pct is not None else "n/a"}</span></div>')
+                rows_html.append(f'<div style="margin-top:8px"><div style="font-size:11.5px;color:{P["tx"]}">{row["label"]}</div>{"".join(bars)}</div>')
+            st.markdown(f'<div class="fpanel">{"".join(rows_html)}</div>', unsafe_allow_html=True)
 
 
 # ================= VIDEO LAB =================

@@ -21,10 +21,11 @@ def measured_players(seq: str) -> dict:
         rows.append({
             "tid": p["tid"], "team": p["team"], "role": T.role_hint(p["mean_x"], p["team"]),
             "space_creation": p["space_creation"], "containment": p["containment"],
-            "frames": p["frames"],
+            "shape_influence": p.get("shape_influence"), "frames": p["frames"],
         })
     return {"seq": seq, "n_frames": data["n_frames"], "players": rows,
-            "sc_status": R.status_of("space_creation"), "cont_status": R.status_of("containment")}
+            "sc_status": R.status_of("space_creation"), "cont_status": R.status_of("containment"),
+            "shape_status": R.status_of("shape_influence")}
 
 
 def measured_profile(row: dict) -> dict:
@@ -32,7 +33,8 @@ def measured_profile(row: dict) -> dict:
     evidence = measured_geometry (the axes we can actually measure from tracking; others stay insufficient)."""
     prof = {}
     mapping = {"space_creation": ("space_creation", "Space creation"),
-               "containment": ("containment", "Defensive containment")}
+               "containment": ("containment", "Defensive containment"),
+               "shape_influence": ("shape_influence", "Shape influence")}
     for ax, spec in S.CAP_AXES.items():
         val = row.get(ax) if ax in mapping else None
         prof[ax] = {"label": spec["label"], "pct": val,

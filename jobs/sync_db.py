@@ -42,8 +42,8 @@ def sync_players() -> int:
 def sync_measured() -> int:
     from app.data import tracked as T
     total = 0
-    for seq in T.available_sequences():
-        data = T.load_measured(seq)
+    for seq in T.available_sequences_from_bucket():           # bucket-direct — see its docstring for why
+        data = T.load_measured_from_bucket(seq)
         n = db.upsert_measured(seq, data["players"])
         total += n
         print(f"[sync] measured {seq}: {n} upserted", flush=True)

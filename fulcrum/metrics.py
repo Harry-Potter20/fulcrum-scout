@@ -49,6 +49,33 @@ def containment(state, k=3):
     return {ids[j]: max(_topk(att, np.delete(dfn, j, 0), ball, k) - base, 0.0) for j in range(len(dfn))}
 
 
+def shape_influence(positions, ids=None):
+    """Per-player contribution to THEIR OWN group's shape — remove them, recompute compactness (x-spread) and
+    width (y-spread); the size of the change is how much their positioning holds that shape together. Symmetric
+    and team-agnostic (unlike space_creation/containment, which are asymmetric by design): pass a defensive
+    block's positions to read defensive compactness, or an attacking line's to read attacking width — same
+    function either way. No find_holes call, so it's cheap relative to the danger-based metrics.
+
+    Removing a player near the group's positional extremes (widest, deepest) changes the std a lot — high
+    shape_influence — while removing someone near the average barely moves it. This is a genuinely different
+    signal from containment/space_creation: it's about STRUCTURAL cohesion (does the group hold its shape),
+    not immediate danger. positions: Nx2 array, one team's outfield players. ids: optional track ids.
+    -> {id: {"compactness_delta": signed, "width_delta": signed, "shape_influence": magnitude}}"""
+    pos = np.asarray(positions, float)
+    ids = list(ids) if ids is not None else list(range(len(pos)))
+    if len(pos) < 5:
+        return {}
+    base_vert, base_horiz = float(pos[:, 0].std()), float(pos[:, 1].std())
+    out = {}
+    for i in range(len(pos)):
+        rest = np.delete(pos, i, 0)
+        cd = float(rest[:, 0].std()) - base_vert
+        wd = float(rest[:, 1].std()) - base_horiz
+        out[ids[i]] = {"compactness_delta": round(cd, 3), "width_delta": round(wd, 3),
+                       "shape_influence": round(abs(cd) + abs(wd), 3)}
+    return out
+
+
 def state_summary(state, k=3):
     """One-pass computed-topology summary of a state (positions only — no ids, no model). For scale validation:
     -> {danger, sc} where

@@ -53,23 +53,58 @@ def records(season: str = None) -> list:
     return [r for r in recs if r.get("season") == season] if season else recs
 
 
+# every per-90 field the ingest schema produces (jobs/fb_multiseason.py::per90_record) — not just the subset used
+# as capability-axis proxies, so Compare/Discover can show percentile+rank for the full production stat sheet too.
+ALL_STATS = ["gls90", "sh90", "sot90", "xg90", "finishing", "goal_conv_pct", "big_ch_missed90", "headed_gls90",
+             "ast90", "xa90", "keypass90", "big_ch_created90", "prog_pass90", "pass_pct", "long_ball90",
+             "crs90", "cross_pct", "dribble90", "dribble_pct", "touches90", "dispossessed90", "was_fouled90",
+             "tkl90", "tkl_won_pct", "int90", "clearances90", "blocks90", "recoveries90",
+             "duels_won90", "duel_won_pct", "aerial_won90", "aerial_won_pct", "dribbled_past90",
+             "fls90", "yellow90", "offsides90"]
+# lower raw value = better for these (percentile/rank direction flips) — everything else is "more is better"
+NEG_STATS = {"fls90", "yellow90", "offsides90", "dispossessed90", "dribbled_past90", "big_ch_missed90"}
+
+
 # ---------------- percentiles within a pool ----------------
 @functools.lru_cache(maxsize=8)
 def _pool_percentiles(season: str) -> dict:
     """{player_name: {stat: pct 0..100}} within `season`. Higher stat -> higher pct (fls90 inverted: fewer fouls
     better). Mirrors recruit.season_percentiles; kept here so the app has zero import of the geometry stack."""
     pool = records(season)
-    stats = sorted({p for ax in S.CAP_AXES.values() for p in ax["proxies"]})
+    stats = sorted(set(ALL_STATS) | {p for ax in S.CAP_AXES.values() for p in ax["proxies"]})
     out = {}
     for m in stats:
         v = np.array([float(r.get(m, 0) or 0) for r in pool])
         if len(v) == 0:
             continue
         order = v.argsort(); pr = np.empty(len(v)); pr[order] = np.linspace(0, 100, len(v))
-        neg = m in ("fls90",)
+        neg = m in NEG_STATS
         for i, r in enumerate(pool):
             out.setdefault(r["name"], {})[m] = float(100 - pr[i] if neg else pr[i])
     return out
+
+
+@functools.lru_cache(maxsize=8)
+def _pool_ranks(season: str) -> dict:
+    """{player_name: {stat: rank}} within `season`, 1 = best (mirrors _pool_percentiles' neg handling so rank 1
+    always means 'best', e.g. fewest fouls for fls90). Kept separate from _pool_percentiles so its {name:{stat:pct}}
+    shape (a plain float) stays exactly what existing callers — capability_profile chief among them — expect."""
+    pool = records(season)
+    stats = sorted(set(ALL_STATS) | {p for ax in S.CAP_AXES.values() for p in ax["proxies"]})
+    out = {}
+    for m in stats:
+        v = np.array([float(r.get(m, 0) or 0) for r in pool])
+        if len(v) == 0:
+            continue
+        neg = m in NEG_STATS
+        order = np.argsort(v) if neg else np.argsort(-v)          # ascending for neg (fewest first), else descending
+        for rank, i in enumerate(order, start=1):
+            out.setdefault(pool[i]["name"], {})[m] = rank
+    return out
+
+
+def pool_size(season: str) -> int:
+    return len(records(season))
 
 
 # ---------------- capability profile (the honest core) ----------------

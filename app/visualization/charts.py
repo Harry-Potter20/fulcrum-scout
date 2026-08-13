@@ -49,6 +49,83 @@ def capability_radar(profile: dict, size=320, accent=None) -> str:
     return "".join(svg)
 
 
+def capability_radar_multi(profiles: dict, colors: dict, size=420) -> str:
+    """Overlay radar for 2-3 players on ONE web — the compare 'stunning viz' moment: shape difference reads
+    instantly where a side-by-side table needs reading. `profiles` = {name: capability_profile}, `colors` =
+    {name: hex}. Each player's polygon is a translucent fill + a distinct stroke colour + a legend row, so identity
+    is never colour-alone (a name label always sits beside its swatch)."""
+    axes = list(S.CAP_AXES)
+    n = len(axes); cx = cy = size / 2; rad = size * 0.32
+    def pt(i, frac):
+        a = -math.pi / 2 + i * 2 * math.pi / n
+        return cx + rad * frac * math.cos(a), cy + rad * frac * math.sin(a)
+    svg = [f'<svg viewBox="0 0 {size} {size+40}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,monospace">']
+    for g in (0.25, 0.5, 0.75, 1.0):
+        pts = " ".join(f"{x:.1f},{y:.1f}" for i in range(n) for x, y in [pt(i, g)])
+        svg.append(f'<polygon points="{pts}" fill="none" stroke="{P["line"]}" stroke-width="1" opacity="0.5"/>')
+    for i in range(n):
+        x, y = pt(i, 1.0)
+        svg.append(f'<line x1="{cx}" y1="{cy}" x2="{x:.1f}" y2="{y:.1f}" stroke="{P["line"]}" stroke-width="1" opacity="0.45"/>')
+    for name, profile in profiles.items():
+        accent = colors.get(name, P["cy"])
+        fr = [(profile[ax]["pct"] / 100.0) if profile[ax]["pct"] is not None else 0.0 for ax in axes]
+        dpts = " ".join(f"{x:.1f},{y:.1f}" for i in range(n) for x, y in [pt(i, fr[i])])
+        svg.append(f'<polygon points="{dpts}" fill="{accent}" fill-opacity="0.10" stroke="{accent}" stroke-width="2.2"/>')
+        for i, ax in enumerate(axes):
+            if profile[ax]["pct"] is not None:
+                x, y = pt(i, fr[i]); svg.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" fill="{accent}"/>')
+    for i, ax in enumerate(axes):
+        x, y = pt(i, 1.2)
+        anchor = "middle" if abs(x - cx) < 8 else ("start" if x > cx else "end")
+        svg.append(f'<text x="{x:.1f}" y="{y:.1f}" font-size="10" fill="{P["dim"]}" text-anchor="{anchor}">{S.CAP_AXES[ax]["label"]}</text>')
+    # legend — colour + name, so identity never relies on colour alone
+    lx, ly = 14, size + 22
+    for name, profile in profiles.items():
+        accent = colors.get(name, P["cy"])
+        safe = name.replace("&", "&amp;").replace("<", "")
+        svg.append(f'<circle cx="{lx}" cy="{ly}" r="4.5" fill="{accent}"/>')
+        svg.append(f'<text x="{lx+10}" y="{ly+4}" font-size="11" fill="{P["tx"]}">{safe}</text>')
+        lx += 26 + len(name) * 7
+    svg.append("</svg>")
+    return "".join(svg)
+
+
+def capability_delta_bars(name_a: str, prof_a: dict, name_b: str, prof_b: dict, color_a: str, color_b: str,
+                           width=640, row_h=34) -> str:
+    """Diverging bars, one per capability axis, sorted by |gap| descending — 'who leads, by how much' at a glance,
+    pairwise only (a third player has no single delta to diverge against). Bars point toward whichever player
+    leads that axis; axes with insufficient evidence for either player are skipped, not shown as a false 0 gap."""
+    axes = []
+    for ax in S.CAP_AXES:
+        pa, pb = prof_a[ax]["pct"], prof_b[ax]["pct"]
+        if pa is None or pb is None:
+            continue
+        axes.append((ax, pa, pb, pa - pb))
+    axes.sort(key=lambda t: -abs(t[3]))
+    height = 24 + len(axes) * row_h + 10
+    m, half = 150, (width - 150 - 20) / 2
+    cx = m + half
+    svg = [f'<svg viewBox="0 0 {width} {height}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,monospace">']
+    svg.append(f'<line x1="{cx}" y1="4" x2="{cx}" y2="{height-4}" stroke="{P["line"]}" stroke-width="1"/>')
+    for i, (ax, pa, pb, gap) in enumerate(axes):
+        y = 24 + i * row_h
+        label = S.CAP_AXES[ax]["label"]
+        svg.append(f'<text x="{m-10}" y="{y+4}" font-size="11" fill="{P["tx"]}" text-anchor="end">{label}</text>')
+        frac = min(abs(gap) / 100.0, 1.0)
+        bw = frac * half
+        if gap >= 0:   # a leads
+            svg.append(f'<rect x="{cx:.1f}" y="{y-9}" width="{bw:.1f}" height="18" rx="3" fill="{color_a}" opacity="0.85"/>')
+            svg.append(f'<text x="{cx+bw+6:.1f}" y="{y+4}" font-size="10" fill="{color_a}">+{gap:.0f}</text>')
+        else:
+            svg.append(f'<rect x="{cx-bw:.1f}" y="{y-9}" width="{bw:.1f}" height="18" rx="3" fill="{color_b}" opacity="0.85"/>')
+            svg.append(f'<text x="{cx-bw-6:.1f}" y="{y+4}" font-size="10" fill="{color_b}" text-anchor="end">+{-gap:.0f}</text>')
+    safe_a = name_a.replace("&", "&amp;").replace("<", ""); safe_b = name_b.replace("&", "&amp;").replace("<", "")
+    svg.append(f'<text x="{m}" y="14" font-size="10" fill="{color_a}">← {safe_a}</text>')
+    svg.append(f'<text x="{width-20}" y="14" font-size="10" fill="{color_b}" text-anchor="end">{safe_b} →</text>')
+    svg.append("</svg>")
+    return "".join(svg)
+
+
 def bar(pct, w=180, accent=None, insufficient=False) -> str:
     """A single capability bar (percentile). Insufficient evidence renders as a hollow track (never a filled 0)."""
     accent = accent or P["cy"]

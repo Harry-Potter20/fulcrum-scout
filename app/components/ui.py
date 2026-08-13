@@ -27,7 +27,8 @@ def inject_css():
 
       .stApp {{
         background:
-          radial-gradient(ellipse 1000px 620px at 6% -8%, {P['cy']}12 0%, transparent 58%),
+          radial-gradient(ellipse 800px 500px at 4% -6%, {P['cy']}0e 0%, transparent 55%),
+          radial-gradient(ellipse 700px 500px at 100% 30%, {P['mag']}09 0%, transparent 55%),
           linear-gradient(180deg, {P['bg']} 0%, #060910 100%);
         color:{P['tx']}; font-family:{SANS};
       }}
@@ -42,7 +43,7 @@ def inject_css():
       * {{ font-variant-numeric: tabular-nums; }}
       /* native inputs/selects — match the card system instead of Streamlit's generic form chrome */
       div[data-baseweb="select"] > div, div[data-baseweb="base-input"], .stTextInput input {{
-        background:{P['panel2']} !important; border:1px solid {P['line']} !important; border-radius:6px !important;
+        background:{P['panel2']} !important; border:1px solid {P['line']} !important; border-radius:12px !important;
         font-family:{MONO} !important; color:{P['tx']} !important;
       }}
       div[data-baseweb="select"] > div:hover, .stTextInput input:hover {{ border-color:{P['cy']}66 !important; }}
@@ -51,18 +52,18 @@ def inject_css():
       li[role="option"]:hover, li[aria-selected="true"] {{ background:{P['cy']}18 !important; }}
       label p {{ font-family:{MONO} !important; font-size:11.5px !important; color:{P['mut']} !important;
                  letter-spacing:.03em; text-transform:uppercase; }}
-      h1 {{ color:{P['hi']}; font-family:{SANS}; font-weight:800; letter-spacing:-.02em; font-size:2.3rem !important; }}
+      h1 {{ color:{P['hi']}; font-family:{SANS}; font-weight:700; letter-spacing:-.01em; font-size:1.65rem !important; }}
       h2,h3,h4 {{ color:{P['hi']}; font-family:{SANS}; font-weight:700; letter-spacing:-.01em; }}
       p, div, span, label {{ font-family:{SANS}; }}
       .eyebrow {{ font-family:{MONO}; font-size:10px; font-weight:600; letter-spacing:.24em; text-transform:uppercase;
                   color:{P['cy']}; border-left:2px solid {P['cy']}55; padding-left:7px; }}
       .mut {{ color:{P['mut']}; }} .cy {{ color:{P['cy']}; }} .mag {{ color:{P['mag']}; }}
-      .fpanel {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:8px; padding:18px 20px; }}
-      .fcard {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:8px; padding:14px 16px;
+      .fpanel {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:16px; padding:18px 20px; }}
+      .fcard {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:16px; padding:14px 16px;
                 transition:border-color .15s; }}
       .fcard:hover {{ border-color:{P['cy']}55; }}
       .badge {{ display:inline-block; font-family:{MONO}; font-size:9.5px; font-weight:500; letter-spacing:.1em;
-                text-transform:uppercase; padding:2px 7px; border-radius:4px; border:1px solid; margin-right:5px; }}
+                text-transform:uppercase; padding:2px 8px; border-radius:20px; border:1px solid; margin-right:5px; }}
       .kv {{ display:flex; justify-content:space-between; align-items:center; padding:6.5px 0;
              border-bottom:1px solid {P['line']}55; font-size:13px; }}
       .mono {{ font-family:{MONO}; }}
@@ -70,7 +71,7 @@ def inject_css():
       .sclab {{ font-family:{MONO}; font-size:8.5px; font-weight:600; letter-spacing:.17em; color:{P['mut']};
                 text-transform:uppercase; }}
       .stButton>button {{ background:{P['panel2']}; color:{P['tx']}; border:1px solid {P['line']};
-                          border-radius:6px; font-family:{MONO}; font-size:13px; transition:border-color .12s, color .12s; }}
+                          border-radius:12px; font-family:{MONO}; font-size:13px; transition:border-color .12s, color .12s; }}
       .stButton>button:hover {{ border-color:{P['cy']}; color:{P['cy']}; }}
       .stButton>button[kind="primary"] {{ background:{P['cy']}14; border-color:{P['cy']}; color:{P['cy']}; }}
       .stButton>button[kind="primary"]:hover {{ background:{P['cy']}22; }}

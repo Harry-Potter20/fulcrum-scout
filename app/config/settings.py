@@ -40,6 +40,8 @@ CAP_AXES = {
                             "proxies": ["dribble90", "prog_pass90"], "hi": True},
     "containment":         {"label": "Defensive containment", "registry_key": "containment",
                             "proxies": ["tkl90", "int90"], "hi": True},
+    "shape_influence":     {"label": "Shape influence",      "registry_key": "shape_influence",
+                            "proxies": [], "hi": True},   # Measured-only — no honest box-score proxy exists
 }
 
 # ---- archetypes emerge from the capability vector (§16), never from a position label (there is none in this data) ----

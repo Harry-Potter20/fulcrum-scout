@@ -34,11 +34,13 @@ CREATE TABLE IF NOT EXISTS measured_caps (
     team        INTEGER,
     space_creation DOUBLE PRECISION,
     containment    DOUBLE PRECISION,
+    shape_influence DOUBLE PRECISION,
     mean_x         DOUBLE PRECISION,
     frames         INTEGER,
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (seq, tid)
 );
+ALTER TABLE measured_caps ADD COLUMN IF NOT EXISTS shape_influence DOUBLE PRECISION;
 
 CREATE TABLE IF NOT EXISTS ingest_log (
     id          SERIAL PRIMARY KEY,
@@ -111,13 +113,13 @@ def upsert_measured(seq: str, players: list) -> int:
     with connect() as conn, conn.cursor() as cur:
         for p in players:
             cur.execute(
-                """INSERT INTO measured_caps (seq, tid, team, space_creation, containment, mean_x, frames, updated_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                """INSERT INTO measured_caps (seq, tid, team, space_creation, containment, shape_influence, mean_x, frames, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now())
                    ON CONFLICT (seq, tid) DO UPDATE
                    SET team=EXCLUDED.team, space_creation=EXCLUDED.space_creation, containment=EXCLUDED.containment,
-                       mean_x=EXCLUDED.mean_x, frames=EXCLUDED.frames, updated_at=now()""",
+                       shape_influence=EXCLUDED.shape_influence, mean_x=EXCLUDED.mean_x, frames=EXCLUDED.frames, updated_at=now()""",
                 (seq, p["tid"], p.get("team"), p.get("space_creation"), p.get("containment"),
-                 p.get("mean_x"), p.get("frames")))
+                 p.get("shape_influence"), p.get("mean_x"), p.get("frames")))
     return len(players)
 
 
@@ -147,10 +149,10 @@ def read_players(season: str) -> list:
 
 def read_measured(seq: str) -> list:
     with connect() as conn, conn.cursor() as cur:
-        cur.execute("SELECT tid, team, space_creation, containment, mean_x, frames FROM measured_caps WHERE seq = %s "
-                    "ORDER BY tid", (seq,))
-        return [{"tid": r[0], "team": r[1], "space_creation": r[2], "containment": r[3], "mean_x": r[4], "frames": r[5]}
-                for r in cur.fetchall()]
+        cur.execute("SELECT tid, team, space_creation, containment, shape_influence, mean_x, frames FROM measured_caps "
+                    "WHERE seq = %s ORDER BY tid", (seq,))
+        return [{"tid": r[0], "team": r[1], "space_creation": r[2], "containment": r[3], "shape_influence": r[4],
+                "mean_x": r[5], "frames": r[6]} for r in cur.fetchall()]
 
 
 def measured_sequences() -> list:
