@@ -126,6 +126,36 @@ def capability_delta_bars(name_a: str, prof_a: dict, name_b: str, prof_b: dict, 
     return "".join(svg)
 
 
+def danger_sparkline(series: list, peak_t: float = None, width=640, height=120, margin=16) -> str:
+    """Danger-over-time line for the Video Lab phase card. `series` = [{"t":sec,"danger":val}, ...]. The peak point
+    (if within `series`) gets a marker + label so the "where did it spike" claim is visible, not just implied by
+    a single before/after number."""
+    if not series:
+        return '<div class="mut mono" style="font-size:11px">no danger samples in this window</div>'
+    ts = [p["t"] for p in series]; ds = [p["danger"] for p in series]
+    t0, t1 = min(ts), max(ts); dmax = max(ds) or 1.0
+    W, H = width, height
+    def px(t, d):
+        x = margin + (t - t0) / max(t1 - t0, 1e-6) * (W - 2 * margin)
+        y = H - margin - (d / dmax) * (H - 2 * margin)
+        return x, y
+    pts = " ".join(f"{x:.1f},{y:.1f}" for x, y in (px(t, d) for t, d in zip(ts, ds)))
+    svg = [f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg">']
+    for frac in (0.0, 0.5, 1.0):
+        y = H - margin - frac * (H - 2 * margin)
+        svg.append(f'<line x1="{margin}" y1="{y:.1f}" x2="{W-margin}" y2="{y:.1f}" stroke="{P["line"]}" stroke-width="1" opacity="0.4"/>')
+    svg.append(f'<polyline points="{pts}" fill="none" stroke="{P["cy"]}" stroke-width="2"/>')
+    area = f"{margin},{H-margin} " + pts + f" {W-margin},{H-margin}"
+    svg.append(f'<polygon points="{area}" fill="{P["cy"]}" fill-opacity="0.08"/>')
+    if peak_t is not None:
+        pd = min(series, key=lambda p: abs(p["t"] - peak_t))
+        x, y = px(pd["t"], pd["danger"])
+        svg.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" fill="{P["amber"]}"/>')
+        svg.append(f'<text x="{x:.1f}" y="{max(10,y-9):.1f}" font-size="10" fill="{P["amber"]}" text-anchor="middle" font-family="ui-monospace,monospace">{pd["danger"]:.2f}</text>')
+    svg.append("</svg>")
+    return "".join(svg)
+
+
 def bar(pct, w=180, accent=None, insufficient=False) -> str:
     """A single capability bar (percentile). Insufficient evidence renders as a hollow track (never a filled 0)."""
     accent = accent or P["cy"]

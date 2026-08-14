@@ -22,6 +22,7 @@ from app.services import measured_service as measured
 from app.services import counterfactual_service as cfsvc
 from app.services import compare_service as compare
 from app.services import club_service as club
+from app.services import video_lab_service as vlab
 from app import db
 from fulcrum import registry as R
 
@@ -56,6 +57,10 @@ def c_measured_seqs(): return measured.sequences()
 def c_club_list(season): return club.club_list(season)
 @st.cache_data(show_spinner=False)
 def c_club_profile(name, season): return club.club_profile(name, season)
+@st.cache_data(show_spinner=False)
+def c_clips(): return vlab.available_clips()
+@st.cache_data(show_spinner=False)
+def c_phase_card(slug): return vlab.phase_card(slug)
 
 
 ss = st.session_state
@@ -219,8 +224,8 @@ def discover():
                 f'the list below — filters apply to both</div>', unsafe_allow_html=True)
     st.markdown(charts.anomaly_map(rows), unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-    for r in rows[:25]:
-        if ui.player_row(r, prefix="disc"): goto("Player", r["name"])
+    for i, r in enumerate(rows[:25]):
+        if ui.player_row(r, prefix=f"disc_{i}"): goto("Player", r["name"])
 
 
 # ================= CLUB =================
@@ -232,8 +237,12 @@ def club_page():
     if not names:
         st.warning("No club data for this season."); return
     default = ss.get("club_pick") if ss.get("club_pick") in names else names[0]
-    pick = st.selectbox("Club", names, index=names.index(default),
-                        format_func=lambda n: f'{n} ({next(c["n_players"] for c in clubs if c["name"]==n)})')
+    by_name = {c["name"]: c for c in clubs}
+    def _fmt(n):
+        c = by_name[n]
+        tag = " 📡" if c["measured"] else ""
+        return f'{n} ({c["n_players"]}){tag}'
+    pick = st.selectbox("Club", names, index=names.index(default), format_func=_fmt)
     ss.club_pick = pick
     prof = c_club_profile(pick, ss.season)
 
@@ -241,12 +250,36 @@ def club_page():
     logo = next((r.get("club_logo_url") for r in squad_recs if r.get("club_logo_url")), None)
     logo_html = (f'<img src="{logo}" style="width:44px;height:44px;object-fit:contain;margin-right:12px" '
                 f'onerror="this.style.display=\'none\'"/>' if logo else "")
+    subtitle = (f'{prof["n_players"]} player(s) in this database — a sample of productive attackers/creators '
+               f'(top goal+assist contributors per league), not a full squad' if prof["n_players"] > 0 else
+               'No box-score representation for this club (outside the leagues this database covers) — shown '
+               'because we have real tracked-match data for it (📡 below)')
     st.markdown(f'''<div style="display:flex;align-items:center;gap:4px">{logo_html}<div>
         <div class="eyebrow">Team intelligence</div><h1 style="margin-bottom:0">{pick}</h1>
-        <div class="mut mono" style="font-size:11.5px">{prof["n_players"]} player(s) in this database — a sample of
-        productive attackers/creators (top goal+assist contributors per league), not a full squad</div></div></div>''',
+        <div class="mut mono" style="font-size:11.5px">{subtitle}</div></div></div>''',
         unsafe_allow_html=True)
 
+    if prof.get("measured"):
+        m = prof["measured"]
+        st.markdown('<div class="eyebrow" style="margin-top:16px">📡 Measured — real tracked-match structural exposure</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="mut mono" style="font-size:10.5px;margin-bottom:6px">From a real tracked match vs '
+                   f'{m["opponent"]} ({m["minutes"]:.0f} min analysed) — how much of the space this defence conceded '
+                   f'was a DURABLE gap vs a momentary flicker. Covers only this specific tracked match, not a season rate.</div>',
+                   unsafe_allow_html=True)
+        mc = st.columns(4)
+        mc[0].markdown(f'<div class="kv" style="border:0"><span class="mut" style="font-size:11px">Structural gaps/min</span>'
+                       f'<b class="mono cy">{m["structural_per_min"]:.1f}</b></div>', unsafe_allow_html=True)
+        mc[1].markdown(f'<div class="kv" style="border:0"><span class="mut" style="font-size:11px">Durable fraction</span>'
+                       f'<b class="mono cy">{m["structural_fraction"]*100:.0f}%</b></div>', unsafe_allow_html=True)
+        mc[2].markdown(f'<div class="kv" style="border:0"><span class="mut" style="font-size:11px">Mean lifetime</span>'
+                       f'<b class="mono">{m["mean_lifetime_structural_s"]:.1f}s</b></div>', unsafe_allow_html=True)
+        mc[3].markdown(f'<div class="kv" style="border:0"><span class="mut" style="font-size:11px">Danger (durable vs flicker)</span>'
+                       f'<b class="mono">{m["danger_structural"]:.2f} vs {m["danger_transient"]:.2f}</b></div>', unsafe_allow_html=True)
+
+    if prof["n_players"] == 0:
+        if not prof.get("measured"):
+            st.info(f'No data at all for {pick} this season.')
+        return
     if not prof["enough_for_profile"]:
         st.info(f'Only {prof["n_players"]} player(s) tracked for {pick} this season — too few for a meaningful '
                f'team profile (need ≥{club.MIN_SQUAD}). Squad list shown below anyway.')
@@ -270,8 +303,8 @@ def club_page():
             st.markdown(f'<div style="font-size:12.5px">{mix}</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="eyebrow" style="margin-top:18px">Squad — ranked by capability index</div>', unsafe_allow_html=True)
-    for r in prof["players"]:
-        if ui.player_row(r, prefix="club"): goto("Player", r["name"])
+    for i, r in enumerate(prof["players"]):
+        if ui.player_row(r, prefix=f"club_{i}"): goto("Player", r["name"])
 
 
 # ================= PLAYER =================
@@ -718,13 +751,73 @@ def video_lab_page():
         st.markdown(f'<div class="kv"><span class="mut" style="font-size:12.5px">{label}</span>'
                     f'<span>{ui.badge(val, badge)}</span></div>', unsafe_allow_html=True)
 
+    clips = c_clips()
+    if not clips:
+        st.markdown(f'<div class="fcard" style="margin-top:16px;border-color:{P["amber"]}44">'
+                    f'<span class="eyebrow" style="color:{P["amber"]}">Not yet available in Scout</span>'
+                    f'<div class="mut" style="font-size:12.5px;margin-top:6px;line-height:1.6">The ingestion pipeline '
+                    f'above is validated (see Evidence) and runs today as a research job, but no clip has been '
+                    f'processed yet.</div></div>', unsafe_allow_html=True)
+        return
+
+    st.markdown('<div class="eyebrow" style="margin-top:18px">Processed clips · real output, not a mockup</div>', unsafe_allow_html=True)
+    slugs = [c["slug"] for c in clips]
+    labels = {c["slug"]: c["label"] for c in clips}
+    pick = st.selectbox("Clip", slugs, format_func=lambda s: labels[s])
+    pc = c_phase_card(pick)
+    if not pc or pc.get("insufficient"):
+        st.info("Not enough live-danger samples in this clip to detect a phase."); return
+
+    st.markdown(f'<div class="fpanel" style="margin-top:10px;border-color:{P["amber"]}66">'
+               f'<span class="eyebrow" style="color:{P["amber"]}">Phase detected · high-danger window</span>'
+               f'<div style="font-size:20px;font-weight:700;margin-top:4px">{pc["window_start_s"]:.0f}s – {pc["window_end_s"]:.0f}s'
+               f'<span class="mut mono" style="font-size:12px;font-weight:400"> into the tracked window</span></div></div>',
+               unsafe_allow_html=True)
+
+    c1, c2 = st.columns([3, 2])
+    with c1:
+        st.markdown('<div class="eyebrow" style="margin-top:14px">What Fulcrum saw</div>', unsafe_allow_html=True)
+        top = pc.get("top_space_creator")
+        bullets = []
+        if top:
+            bullets.append(f'Track <b class="cy">#{top["tid"]}</b> was the clip\'s top measured space-creator '
+                          f'(<b class="cy">{top["space_creation"]:.0f}th</b> percentile within this clip).')
+        bullets.append(f'Danger rose from <b>{pc["baseline_danger"]:.2f}</b> (clip baseline) to a peak of '
+                       f'<b class="cy">{pc["peak_danger"]:.2f}</b> — a <b class="cy">{pc["delta_danger_pct"]:+.0f}%</b> move.')
+        for b in bullets:
+            st.markdown(f'<div style="font-size:13px;line-height:1.8;color:{P["tx"]}">• {b}</div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="eyebrow" style="margin-top:14px">Tactical interpretation</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="fpanel"><div style="font-size:13px;line-height:1.65;color:{P["tx"]}">{pc["interpretation"]}</div></div>',
+                   unsafe_allow_html=True)
+
+        st.markdown('<div class="eyebrow" style="margin-top:14px">Evidence</div>', unsafe_allow_html=True)
+        ev = [("Danger", f'{pc["baseline_danger"]:.2f} → {pc["peak_danger"]:.2f}', f'{pc["delta_danger_pct"]:+.0f}%'),
+             ("Space creation (top player)", f'{top["space_creation"]:.0f}th pct' if top else "n/a", ""),
+             ("Danger samples in window", str(pc["n_danger_samples"]), "")]
+        for label, val, delta in ev:
+            st.markdown(f'<div class="kv"><span class="mut" style="font-size:12.5px">{label}</span>'
+                       f'<span class="mono">{val} <span class="cy">{delta}</span></span></div>', unsafe_allow_html=True)
+    with c2:
+        st.markdown('<div class="eyebrow" style="margin-top:14px">Danger over time</div>', unsafe_allow_html=True)
+        st.markdown(charts.danger_sparkline(pc["danger_series"], peak_t=(pc["window_start_s"]+pc["window_end_s"])/2),
+                   unsafe_allow_html=True)
+        st.markdown('<div class="eyebrow" style="margin-top:10px">Preview</div>', unsafe_allow_html=True)
+        st.markdown(f'<img src="{pc["gif_url"]}" style="width:100%;border-radius:8px;border:1px solid {P["line"]}"/>',
+                   unsafe_allow_html=True)
+
+    st.markdown('<div class="eyebrow" style="margin-top:16px">Watch clip</div>', unsafe_allow_html=True)
+    st.video(pc["video_url"])
+    st.markdown(f'<div class="mut mono" style="font-size:10px;margin-top:6px">Broadcast (left) with player boxes + '
+               f'track ids, top-down board (right) with team-shape hull lines and live danger. Gold box = the '
+               f'measured top space-creator for this clip.</div>', unsafe_allow_html=True)
+
     st.markdown(f'<div class="fcard" style="margin-top:16px;border-color:{P["amber"]}44">'
-                f'<span class="eyebrow" style="color:{P["amber"]}">Not yet available in Scout</span>'
-                f'<div class="mut" style="font-size:12.5px;margin-top:6px;line-height:1.6">The ingestion pipeline above '
-                f'is validated (see Evidence) and runs today as a research job, but async video upload isn\'t wired '
-                f'into this product surface yet — no upload button that goes nowhere. When it lands, results feed '
-                f'directly into Solve (video → tactical problem → capability search) and Discover, per the video↔scout '
-                f'bridge in the product spec.</div></div>', unsafe_allow_html=True)
+               f'<span class="eyebrow" style="color:{P["amber"]}">Still manual</span>'
+               f'<div class="mut" style="font-size:12.5px;margin-top:6px;line-height:1.6">This clip was processed by '
+               f'running the pipeline as a research job, not through an in-app upload — no upload button that goes '
+               f'nowhere. When self-serve upload lands, results feed directly into Solve and Discover, per the '
+               f'video↔scout bridge in the product spec.</div></div>', unsafe_allow_html=True)
 
 
 PAGES = {"Home": home, "Discover": discover, "Solve": solve_page, "Player": player_page, "Club": club_page,

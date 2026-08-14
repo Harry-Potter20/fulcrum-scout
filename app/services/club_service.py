@@ -15,18 +15,68 @@ from app.services import scout_service as scout
 
 _PLACEHOLDER_CLUBS = {"Without Club", "Retired", None, ""}
 MIN_SQUAD = 3   # below this, a "team profile" is just 1-2 players wearing a club badge — show n_players, not a radar
+STRUCT_REPO = "Chucks90/football-gsr-data"
 
 
 def _real_club(name: str) -> bool:
     return name not in _PLACEHOLDER_CLUBS
 
 
+def _hf_token():
+    import os
+    t = os.environ.get("HF_TOKEN")
+    if t:
+        return t
+    try:
+        return open(os.path.expanduser("~/.cache/huggingface/token")).read().strip()
+    except Exception:
+        return None
+
+
+def _structural_index() -> dict:
+    """{team_name: {match_id, opponent, ...structural_exposure fields}} scanned from every
+    gsr/structural_exposure_<match_id>.json in the bucket — real per-team tracked-match findings, covering only
+    the specific clubs we've actually tracked (currently: whichever teams appear in SkillCorner's open-data
+    sample + any match we've run youtube_flip/footballia on with a long enough window). Never extrapolated to
+    clubs we haven't tracked."""
+    from huggingface_hub import HfApi, hf_hub_download
+    import json
+    tok = _hf_token()
+    try:
+        files = HfApi(token=tok).list_repo_files(STRUCT_REPO, repo_type="dataset")
+    except Exception:
+        return {}
+    out = {}
+    for f in files:
+        if not (f.startswith("gsr/structural_exposure_") and f.endswith(".json")):
+            continue
+        try:
+            p = hf_hub_download(STRUCT_REPO, f, repo_type="dataset", token=tok)
+            d = json.load(open(p))
+        except Exception:
+            continue
+        home, away = d.get("home_team"), d.get("away_team")
+        by_team = d.get("by_team", {})
+        if home and "0.0" in by_team:
+            out[home] = {**by_team["0.0"], "match_id": d["match_id"], "opponent": away}
+        if away and "1.0" in by_team:
+            out[away] = {**by_team["1.0"], "match_id": d["match_id"], "opponent": home}
+    return out
+
+
 def club_list(season: str) -> list:
-    """{name, n_players} for every real club with at least one player in `season`, sorted by squad size desc —
-    the clubs with enough representation to say anything meaningful surface first, but nothing is hidden."""
+    """{name, n_players, measured} for every real club with a player in `season` OR real tracked-match data —
+    the latter (measured=True, n_players may be 0) surfaces clubs we have genuine Measured insight for even when
+    they have no box-score representation at all (e.g. leagues outside the 18 this database covers)."""
     from collections import Counter
     counts = Counter(r["club"] for r in D.records(season) if _real_club(r.get("club")))
-    return sorted(({"name": c, "n_players": n} for c, n in counts.items()), key=lambda x: -x["n_players"])
+    out = {c: {"name": c, "n_players": n, "measured": False} for c, n in counts.items()}
+    for team in _structural_index():
+        if team in out:
+            out[team]["measured"] = True
+        else:
+            out[team] = {"name": team, "n_players": 0, "measured": True}
+    return sorted(out.values(), key=lambda x: (-x["n_players"], not x["measured"]))
 
 
 def club_squad(club: str, season: str) -> list:
@@ -36,11 +86,14 @@ def club_squad(club: str, season: str) -> list:
 def club_profile(club: str, season: str) -> dict:
     """Team aggregate: mean capability profile across the squad sample (the 'team style' radar), archetype mix,
     and per-axis min/max to show spread (a team is not one number even in aggregate — §40). `n_players` and
-    `enough_for_profile` (>=MIN_SQUAD) are always present so a thin sample is visible, not silently averaged away."""
+    `enough_for_profile` (>=MIN_SQUAD) are always present so a thin sample is visible, not silently averaged away.
+    `measured` carries real tracked-match structural_exposure when we have it for this specific club — independent
+    of whether the club has any box-score representation at all."""
+    measured = _structural_index().get(club)
     squad = club_squad(club, season)
     n = len(squad)
     if n == 0:
-        return {"club": club, "season": season, "n_players": 0, "enough_for_profile": False}
+        return {"club": club, "season": season, "n_players": 0, "enough_for_profile": False, "measured": measured}
 
     axes = list(S.CAP_AXES)
     per_axis = {ax: [] for ax in axes}
@@ -84,4 +137,5 @@ def club_profile(club: str, season: str) -> dict:
         "strongest_axis": strong_axes[0] if strong_axes else None,
         "archetype_mix": sorted(archetypes.items(), key=lambda kv: -kv[1]),
         "players": rows,
+        "measured": measured,
     }
