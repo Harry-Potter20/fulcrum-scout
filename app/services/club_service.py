@@ -139,3 +139,39 @@ def club_profile(club: str, season: str) -> dict:
         "players": rows,
         "measured": measured,
     }
+
+
+def club_fit(club: str, season: str, top: int = 10, max_value_m: float = 1e9) -> dict:
+    """Club-conditioned Tactical Fit (§20/§21/§31 applied to a squad's actual gap, not a generic stated need):
+    auto-derives the priority stack from the club's OWN weakest capability axes — the gap a signing would target —
+    excludes players already at the club, and reports each candidate's fit as a DELTA against the club's current
+    squad average on those same axes. Not just 'FIT 91' but '+18 vs YOUR current space_creation average', so the
+    recommendation is checkable against this specific squad, not some generic baseline."""
+    from app.services import fit_service as fit
+    prof = club_profile(club, season)
+    if not prof.get("enough_for_profile"):
+        return {"club": club, "season": season, "viable": False,
+                "reason": f"squad sample too small (need ≥{MIN_SQUAD} players with capability data)"}
+
+    ranked_weak = sorted((ax for ax in S.CAP_AXES if prof["team_profile"][ax]["mean"] is not None),
+                         key=lambda ax: prof["team_profile"][ax]["mean"])
+    axes = ranked_weak[:2] if len(ranked_weak) > 1 else ranked_weak
+    if not axes:
+        return {"club": club, "season": season, "viable": False, "reason": "no capability data to target"}
+
+    squad_names = {r["name"] for r in prof["players"]}
+    raw = fit.best_fits(season, axes, min_minutes=8.0, max_age=40, max_value_m=max_value_m, top=top + len(squad_names))
+    candidates = [c for c in raw if c["name"] not in squad_names][:top]
+
+    label_to_axis = {S.CAP_AXES[a]["label"]: a for a in axes}
+    for c in candidates:
+        deltas = []
+        for b in c["breakdown"]:
+            ax_key = label_to_axis.get(b["axis"])
+            team_mean = prof["team_profile"].get(ax_key, {}).get("mean") if ax_key else None
+            delta = round(b["pct"] - team_mean, 1) if (b["pct"] is not None and team_mean is not None) else None
+            deltas.append({"axis": b["axis"], "pct": b["pct"], "team_mean": team_mean, "delta": delta})
+        c["deltas"] = deltas
+
+    return {"club": club, "season": season, "viable": True,
+           "target_axes": [S.CAP_AXES[a]["label"] for a in axes], "candidates": candidates}

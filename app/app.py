@@ -58,6 +58,8 @@ def c_club_list(season): return club.club_list(season)
 @st.cache_data(show_spinner=False)
 def c_club_profile(name, season): return club.club_profile(name, season)
 @st.cache_data(show_spinner=False)
+def c_club_fit(name, season): return club.club_fit(name, season)
+@st.cache_data(show_spinner=False)
 def c_clips(): return vlab.available_clips()
 @st.cache_data(show_spinner=False)
 def c_phase_card(slug): return vlab.phase_card(slug)
@@ -301,6 +303,27 @@ def club_page():
             st.markdown('<div class="eyebrow" style="margin-top:12px">Archetype mix</div>', unsafe_allow_html=True)
             mix = "  ".join(f'<span class="mut">{a}</span> <b class="mono cy">{n}</b>' for a, n in prof["archetype_mix"])
             st.markdown(f'<div style="font-size:12.5px">{mix}</div>', unsafe_allow_html=True)
+
+    if prof["enough_for_profile"]:
+        cf = c_club_fit(pick, ss.season)
+        if cf.get("viable"):
+            st.markdown('<div class="eyebrow" style="margin-top:20px">Who solves this? · club-conditioned Tactical Fit</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="mut mono" style="font-size:10.5px;margin-bottom:8px">Targeting '
+                       f'<b class="amber">{" + ".join(cf["target_axes"])}</b> — {pick}\'s own weakest axes. '
+                       f'Excludes current squad. Deltas are vs THIS squad\'s average, not a generic baseline.</div>',
+                       unsafe_allow_html=True)
+            for i, c in enumerate(cf["candidates"][:8]):
+                cc = st.columns([3, 4, 1])
+                cc[0].markdown(f'**{c["name"]}**  \n<span class="mut mono" style="font-size:11px">{c["league"]} · '
+                              f'{c["age"]}y{" · €" + str(c["value_m"]) + "M" if c.get("value_m") else ""} · {c["archetype"]}</span>',
+                              unsafe_allow_html=True)
+                deltas_html = "  ".join(
+                    f'<span class="mut">{d["axis"]}</span> <b class="mono" style="color:{P["cy"] if (d["delta"] or 0)>=0 else P["danger"]}">{d["delta"]:+.0f}</b>'
+                    for d in c["deltas"] if d["delta"] is not None)
+                cc[1].markdown(f'<div style="padding-top:2px"><span class="sclab">FIT</span> '
+                              f'<b class="mono cy" style="font-size:16px">{c["fit"]:.0f}</b><br>'
+                              f'<span style="font-size:11px">{deltas_html}</span></div>', unsafe_allow_html=True)
+                if cc[2].button("Open", key=f"clubfit_{i}"): goto("Player", c["name"])
 
     st.markdown('<div class="eyebrow" style="margin-top:18px">Squad — ranked by capability index</div>', unsafe_allow_html=True)
     for i, r in enumerate(prof["players"]):
