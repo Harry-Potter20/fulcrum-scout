@@ -58,8 +58,9 @@ def best_fits(season: str, priorities: list[str], *, min_minutes=8.0, max_age=40
         ev = evaluate(rec["name"], season, priorities)
         if ev.get("fit") is None:
             continue
+        mv = rec.get("market_value")
         ev.update({"league": rec.get("league"), "age": rec.get("age"),
-                   "value_m": round(float(rec.get("market_value", 0) or 0) / 1e6, 1),
+                   "value_m": round(float(mv) / 1e6, 1) if mv else None,
                    "archetype": D.archetype(rec, season)["primary"]})
         out.append(ev)
     out.sort(key=lambda x: -x["fit"])

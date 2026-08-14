@@ -128,10 +128,39 @@ def capability_profile(record: dict, season: str = None) -> dict:
     return prof
 
 
+# axes with NO box-score proxies (e.g. shape_influence — Measured-only, no honest proxy for named players) are
+# structurally never available here; including them in the similarity vector would inject the SAME constant filler
+# into every named player, silently inflating cosine similarity for everyone (verified: same-position players were
+# showing 99%+ "similarity" driven partly by this shared, uninformative 50.0). Excluded entirely, not neutral-filled.
+VECTOR_AXES = [ax for ax, spec in S.CAP_AXES.items() if spec["proxies"]]
+
+
 def capability_vector(record: dict, season: str = None) -> np.ndarray:
-    """The capability profile as a fixed-order vector in [0,100] (for behavioural similarity, §17). NaN->50 (neutral)."""
+    """The capability profile as a fixed-order vector in [0,100] (for behavioural similarity, §17), over axes that
+    actually have proxies. NaN->50 (neutral) only for the rare case where THIS player is missing one of those
+    proxy stats individually — not for axes that are unmeasurable for every named player."""
     prof = capability_profile(record, season)
-    return np.array([(prof[ax]["pct"] if prof[ax]["pct"] is not None else 50.0) for ax in S.CAP_AXES])
+    return np.array([(prof[ax]["pct"] if prof[ax]["pct"] is not None else 50.0) for ax in VECTOR_AXES])
+
+
+@functools.lru_cache(maxsize=8)
+def capability_cov_inv(season: str) -> np.ndarray:
+    """Inverse covariance of the capability vector across the season pool (Mahalanobis whitening, §17 similarity).
+    The axes are strongly role-correlated in practice (e.g. progressive_intent vs press_resistance ~0.95 for
+    attackers, verified) — plain Euclidean/cosine distance is dominated by that shared "how attacking is this
+    player" direction, so any two players of the same role land within ~0.5% of each other regardless of style.
+    Whitening by the pool's own covariance downweights that dominant correlated direction and upweights the
+    residual axes that actually differentiate players WITHIN a role. Small ridge for numerical safety only —
+    the real eigenvalue spread here is ~9 to ~1500, comfortably invertible without it."""
+    pool = [r for r in records(season) if (r.get("nineties") or 0) >= 6]
+    vecs = np.array([capability_vector(r, season) for r in pool])
+    cov = np.cov(vecs.T) + np.eye(vecs.shape[1]) * 1e-3
+    return np.linalg.inv(cov)
+
+
+def mahalanobis(a: np.ndarray, b: np.ndarray, season: str) -> float:
+    d = a - b
+    return float(np.sqrt(d @ capability_cov_inv(season) @ d))
 
 
 def archetype(record: dict, season: str = None) -> dict:
@@ -150,16 +179,21 @@ def archetype(record: dict, season: str = None) -> dict:
     return out
 
 
-def value_percentile(record: dict, season: str = None) -> float:
-    """Where the player's market value sits in the pool (0=cheapest, 100=most expensive). Used for VALUE and for the
-    market-anomaly signal (§43) — high capability + low value percentile = potentially undervalued."""
+def value_percentile(record: dict, season: str = None) -> float | None:
+    """Where the player's market value sits among peers who HAVE a known value (0=cheapest, 100=most expensive).
+    Returns None — never a fabricated number — when this player's own value is unknown, or when the season's pool
+    has no priced players at all. Unpriced players are also excluded from the pool itself: folding them in as 0
+    would silently mark them "free" and drag every genuinely-priced player's percentile upward (§40/§43 — decompose
+    honestly, never fake a number)."""
     season = season or record.get("season") or S.DEFAULT_SEASON
-    pool = records(season)
-    mv = np.array([float(r.get("market_value", 0) or 0) for r in pool])
+    pool = [r for r in records(season) if r.get("market_value")]
+    if not pool:
+        return None
+    mv = np.array([float(r["market_value"]) for r in pool])
     order = mv.argsort(); pr = np.empty(len(mv)); pr[order] = np.linspace(0, 100, len(mv))
     idx = {r["name"]: i for i, r in enumerate(pool)}
     i = idx.get(record["name"])
-    return round(float(pr[i]), 1) if i is not None else 50.0
+    return round(float(pr[i]), 1) if i is not None else None
 
 
 def capability_index(record: dict, season: str = None) -> float:

@@ -100,8 +100,10 @@ with st.sidebar:
                 unsafe_allow_html=True)
     ss.season = st.selectbox("Season", S.SEASONS, index=S.SEASONS.index(ss.season))
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    NAV_ICONS = {"Home": "⌂", "Discover": "◎", "Solve": "⚙", "Player": "◐", "Compare": "⇄",
+                "Simulate": "▷", "Video Lab": "▣", "Measured": "▤", "Evidence": "✓"}
     for pg in ["Home", "Discover", "Solve", "Player", "Compare", "Simulate", "Video Lab", "Measured", "Evidence"]:
-        if st.button(pg, key=f"nav_{pg}", use_container_width=True, type=("primary" if ss.page == pg else "secondary")):
+        if st.button(f"{NAV_ICONS[pg]}  {pg}", key=f"nav_{pg}", use_container_width=True, type=("primary" if ss.page == pg else "secondary")):
             goto(pg)
     st.markdown(f'<div class="mut mono" style="font-size:9.5px;margin-top:20px;line-height:1.6">'
                 f'Identity never enters the backbone.<br>No capability claim without evidence.<br>'
@@ -227,9 +229,23 @@ def player_page():
     if not pl:
         st.warning("No record."); return
 
-    st.markdown(f'<div class="eyebrow">Player intelligence</div><h1 style="margin-bottom:0">{pl["name"]}</h1>'
-                f'<div class="mut mono" style="font-size:12px">{pl["league"]} · {pl["age"]}y · €{pl["value_m"]}M · '
-                f'{pl["foot"]}-footed · {pl["nineties"]:.0f}×90 played</div>', unsafe_allow_html=True)
+    photo = pl.get("photo_url")
+    logo = pl.get("club_logo_url")
+    flag = ui.flag_emoji(pl.get("nationality_alpha2"))
+    photo_html = (f'<img src="{photo}" style="width:76px;height:76px;border-radius:14px;object-fit:cover;'
+                 f'border:1px solid {P["line"]}" onerror="this.style.display=\'none\'"/>' if photo else "")
+    logo_html = (f'<img src="{logo}" style="width:20px;height:20px;object-fit:contain;vertical-align:-4px;'
+                f'margin-right:4px" onerror="this.style.display=\'none\'"/>' if logo else "")
+    facts = [f"{flag} {pl['nationality']}" if pl.get("nationality") else None,
+             f"{pl['age']}y" if pl.get("age") else None,
+             f"€{pl['value_m']}M" if pl.get("value_m") else None,
+             f"{pl['foot']}-footed" if pl.get("foot") else None,
+             f"{pl['nineties']:.0f}×90 played" if pl.get("nineties") else None]
+    facts_html = " · ".join(f for f in facts if f)
+    st.markdown(f'''<div style="display:flex;align-items:center;gap:16px">{photo_html}<div>
+        <div class="eyebrow">Player intelligence</div><h1 style="margin-bottom:0">{pl["name"]}</h1>
+        <div class="mut mono" style="font-size:12px">{logo_html}{pl.get("club") or pl["league"]}
+        {" · " + facts_html if facts_html else ""}</div></div></div>''', unsafe_allow_html=True)
     arc = pl["archetype"]
     blend = f' / {arc["secondary"]}' if "secondary" in arc else ""
     st.markdown(f'<div style="margin:10px 0"><span class="eyebrow">Archetype</span> '
@@ -288,10 +304,14 @@ def player_page():
                     f'(capability vector) — not position, league, or production totals.</div>', unsafe_allow_html=True)
         for s in c_similar(pick, ss.season):
             mech = " · ".join(f'{lab} {v}' for lab, v in s["mechanism"])
+            val = f' · €{s["value_m"]}M' if s.get("value_m") else ""
+            gap = s["cap_gap"]
+            gap_col = P["cy"] if abs(gap) <= 5 else (P["amber"] if gap < 0 else P["hi"])
+            gap_html = f'<span class="mono" style="font-size:10.5px;color:{gap_col}">tier {gap:+.1f}</span>'
             st.markdown(f'<div class="kv"><span><b>{s["name"]}</b> <span class="mut mono" style="font-size:11px">'
-                        f'{s["league"]} · €{s["value_m"]}M</span></span><span class="mono cy">{s["similarity"]:.0f}%</span></div>'
+                        f'{s["league"]}{val}</span></span><span class="mono cy">{s["similarity"]:.1f}%</span></div>'
                         f'<div class="mut mono" style="font-size:10.5px;margin:-2px 0 7px">solves it via <span style="color:{P["tx"]}">{mech}</span> '
-                        f'· shares {", ".join(s["shared"])}</div>', unsafe_allow_html=True)
+                        f'· shares {", ".join(s["shared"])} · {gap_html} <span class="mut">vs this player\'s capability</span></div>', unsafe_allow_html=True)
     with tabs[3]:
         st.markdown(f'<div class="mut" style="font-size:13px;line-height:1.7">Direct entry into the world-model '
                     f'simulation — inject a capability, roll real tracked phases forward, read the modelled effect. '
@@ -393,8 +413,10 @@ def solve_page():
         bd = "  ".join(f'<span class="mut">{b["axis"]}</span> <b class="mono" style="color:{P["cy"] if (b["pct"] or 0)>=75 else P["tx"]}">{int(b["pct"]) if b["pct"] is not None else "n/a"}</b>'
                        for b in r["breakdown"])
         cc = st.columns([3, 4, 1])
-        cc[0].markdown(f'**{r["name"]}**  \n<span class="mut mono" style="font-size:11px">{r["league"]} · {r["age"]}y · '
-                       f'€{r["value_m"]}M · {r["archetype"]}</span>', unsafe_allow_html=True)
+        age_s = f'{r["age"]}y · ' if r.get("age") else ""
+        val_s = f'€{r["value_m"]}M · ' if r.get("value_m") else ""
+        cc[0].markdown(f'**{r["name"]}**  \n<span class="mut mono" style="font-size:11px">{r["league"]} · {age_s}'
+                       f'{val_s}{r["archetype"]}</span>', unsafe_allow_html=True)
         cc[1].markdown(f'<div style="padding-top:2px"><span class="sclab">FIT</span> '
                        f'<b class="mono cy" style="font-size:16px">{r["fit"]:.0f}</b><br>'
                        f'<span style="font-size:11px">{bd}</span></div>', unsafe_allow_html=True)

@@ -9,6 +9,15 @@ from app.visualization import charts
 
 P = S.PALETTE
 
+
+def flag_emoji(alpha2: str | None) -> str:
+    """ISO alpha-2 -> regional-indicator flag emoji (e.g. 'NO' -> 🇳🇴). Each letter A-Z maps to U+1F1E6.. by a
+    fixed offset from 'A'; no lookup table needed. Empty string if alpha2 is missing/malformed."""
+    if not alpha2 or len(alpha2) != 2 or not alpha2.isalpha():
+        return ""
+    return "".join(chr(0x1F1E6 + ord(c.upper()) - ord("A")) for c in alpha2)
+
+
 # badge classes -> (fg, border). Kept in sync with the published artifact's epistemic badges.
 _BADGE = {
     "b-val":  (P["good"],  "#1f5c43"), "b-face": (P["amber"], "#5c471f"),
@@ -58,10 +67,13 @@ def inject_css():
       .eyebrow {{ font-family:{MONO}; font-size:10px; font-weight:600; letter-spacing:.24em; text-transform:uppercase;
                   color:{P['cy']}; border-left:2px solid {P['cy']}55; padding-left:7px; }}
       .mut {{ color:{P['mut']}; }} .cy {{ color:{P['cy']}; }} .mag {{ color:{P['mag']}; }}
-      .fpanel {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:16px; padding:18px 20px; }}
-      .fcard {{ background:{P['panel']}; border:1px solid {P['line']}; border-radius:16px; padding:14px 16px;
-                transition:border-color .15s; }}
-      .fcard:hover {{ border-color:{P['cy']}55; }}
+      .fpanel {{ background:{P['panel']}b8; backdrop-filter:blur(18px) saturate(150%); -webkit-backdrop-filter:blur(18px) saturate(150%);
+                 border:1px solid {P['line']}; border-top-color:#ffffff1c; border-radius:16px; padding:18px 20px;
+                 box-shadow: inset 0 1px 0 #ffffff0f, 0 10px 30px -14px #00000070; }}
+      .fcard {{ background:{P['panel']}ab; backdrop-filter:blur(14px) saturate(150%); -webkit-backdrop-filter:blur(14px) saturate(150%);
+                border:1px solid {P['line']}; border-top-color:#ffffff1c; border-radius:16px; padding:14px 16px;
+                box-shadow: inset 0 1px 0 #ffffff0f, 0 8px 24px -14px #00000070; transition:border-color .15s, transform .12s; }}
+      .fcard:hover {{ border-color:{P['cy']}55; transform:translateY(-1px); }}
       .badge {{ display:inline-block; font-family:{MONO}; font-size:9.5px; font-weight:500; letter-spacing:.1em;
                 text-transform:uppercase; padding:2px 8px; border-radius:20px; border:1px solid; margin-right:5px; }}
       .kv {{ display:flex; justify-content:space-between; align-items:center; padding:6.5px 0;
@@ -75,7 +87,8 @@ def inject_css():
       .stButton>button:hover {{ border-color:{P['cy']}; color:{P['cy']}; }}
       .stButton>button[kind="primary"] {{ background:{P['cy']}14; border-color:{P['cy']}; color:{P['cy']}; }}
       .stButton>button[kind="primary"]:hover {{ background:{P['cy']}22; }}
-      section[data-testid="stSidebar"] {{ background:{P['panel']}; border-right:1px solid {P['line']}; }}
+      section[data-testid="stSidebar"] {{ background:{P['panel']}c8; backdrop-filter:blur(20px) saturate(150%);
+                                          -webkit-backdrop-filter:blur(20px) saturate(150%); border-right:1px solid {P['line']}; }}
       .stTabs [data-baseweb="tab-list"] {{ gap:4px; border-bottom:1px solid {P['line']}; }}
       .stTabs [data-baseweb="tab"] {{ font-family:{MONO}; color:{P['mut']}; }}
       .stTabs [aria-selected="true"] {{ color:{P['cy']} !important; }}
@@ -118,8 +131,9 @@ def scorecard(sc: dict):
             ("EVIDENCE", "EVIDENCE", P["amber"], "minutes / data grade")]
     for c, (key, lab, col, tip) in zip(cols, meta):
         with c:
+            val = sc.get(key)
             st.markdown(f'<div class="fcard" title="{tip}"><div class="sclab">{lab}</div>'
-                        f'<div class="scnum" style="color:{col}">{sc.get(key,"—")}</div></div>', unsafe_allow_html=True)
+                        f'<div class="scnum" style="color:{col}">{val if val is not None else "—"}</div></div>', unsafe_allow_html=True)
 
 
 def capability_panel(profile: dict):
@@ -141,11 +155,21 @@ def capability_panel(profile: dict):
 
 
 def player_row(r: dict, prefix: str = ""):
-    """Compact discover/list row: name, archetype, decomposed scorecard, open button."""
+    """Compact discover/list row: photo, name, club/nationality/archetype, decomposed scorecard, open button."""
     c1, c2, c3 = st.columns([3, 2.6, 0.9])
     with c1:
-        st.markdown(f'**{r["name"]}**  \n<span class="mut mono" style="font-size:11px">{r.get("league","")} · '
-                    f'{r.get("age","?")}y · €{r.get("value_m","?")}M · {r.get("archetype","")}</span>',
+        photo = r.get("photo_url")
+        img = (f'<img src="{photo}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;'
+              f'border:1px solid {P["line"]};flex-shrink:0" onerror="this.style.display=\'none\'"/>'
+              if photo else f'<div style="width:34px;height:34px;border-radius:50%;background:{P["panel2"]};'
+              f'border:1px solid {P["line"]};flex-shrink:0"></div>')
+        flag = flag_emoji(r.get("nationality_alpha2"))
+        club = r.get("club")
+        meta = " · ".join(x for x in [r.get("league", ""), club, f'{flag} {r.get("nationality","")}'.strip() if flag or r.get("nationality") else None,
+                                      f'{r.get("age","?")}y', f'€{r.get("value_m","?")}M'] if x)
+        st.markdown(f'<div style="display:flex;align-items:center;gap:10px">{img}<div>'
+                    f'<b>{r["name"]}</b><br><span class="mut mono" style="font-size:10.5px">{meta}'
+                    f'{" · " + r["archetype"] if r.get("archetype") else ""}</span></div></div>',
                     unsafe_allow_html=True)
     with c2:
         sc = r.get("scorecard", {})
