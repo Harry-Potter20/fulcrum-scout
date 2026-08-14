@@ -21,6 +21,7 @@ from app.services import fit_service as fit
 from app.services import measured_service as measured
 from app.services import counterfactual_service as cfsvc
 from app.services import compare_service as compare
+from app.services import club_service as club
 from app import db
 from fulcrum import registry as R
 
@@ -51,6 +52,10 @@ def c_similar(name, season): return scout.similar(name, season)
 def c_measured(seq): return measured.measured_players(seq)
 @st.cache_data(show_spinner=False)
 def c_measured_seqs(): return measured.sequences()
+@st.cache_data(show_spinner=False)
+def c_club_list(season): return club.club_list(season)
+@st.cache_data(show_spinner=False)
+def c_club_profile(name, season): return club.club_profile(name, season)
 
 
 ss = st.session_state
@@ -100,9 +105,9 @@ with st.sidebar:
                 unsafe_allow_html=True)
     ss.season = st.selectbox("Season", S.SEASONS, index=S.SEASONS.index(ss.season))
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    NAV_ICONS = {"Home": "⌂", "Discover": "◎", "Solve": "⚙", "Player": "◐", "Compare": "⇄",
+    NAV_ICONS = {"Home": "⌂", "Discover": "◎", "Solve": "⚙", "Player": "◐", "Club": "▦", "Compare": "⇄",
                 "Simulate": "▷", "Video Lab": "▣", "Measured": "▤", "Evidence": "✓"}
-    for pg in ["Home", "Discover", "Solve", "Player", "Compare", "Simulate", "Video Lab", "Measured", "Evidence"]:
+    for pg in ["Home", "Discover", "Solve", "Player", "Club", "Compare", "Simulate", "Video Lab", "Measured", "Evidence"]:
         if st.button(f"{NAV_ICONS[pg]}  {pg}", key=f"nav_{pg}", use_container_width=True, type=("primary" if ss.page == pg else "secondary")):
             goto(pg)
     st.markdown(f'<div class="mut mono" style="font-size:9.5px;margin-top:20px;line-height:1.6">'
@@ -216,6 +221,57 @@ def discover():
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
     for r in rows[:25]:
         if ui.player_row(r, prefix="disc"): goto("Player", r["name"])
+
+
+# ================= CLUB =================
+def club_page():
+    st.markdown('<div class="eyebrow">Club · team aggregate, from the players in this database</div>', unsafe_allow_html=True)
+    st.markdown("# Club")
+    clubs = c_club_list(ss.season)
+    names = [c["name"] for c in clubs]
+    if not names:
+        st.warning("No club data for this season."); return
+    default = ss.get("club_pick") if ss.get("club_pick") in names else names[0]
+    pick = st.selectbox("Club", names, index=names.index(default),
+                        format_func=lambda n: f'{n} ({next(c["n_players"] for c in clubs if c["name"]==n)})')
+    ss.club_pick = pick
+    prof = c_club_profile(pick, ss.season)
+
+    squad_recs = club.club_squad(pick, ss.season)
+    logo = next((r.get("club_logo_url") for r in squad_recs if r.get("club_logo_url")), None)
+    logo_html = (f'<img src="{logo}" style="width:44px;height:44px;object-fit:contain;margin-right:12px" '
+                f'onerror="this.style.display=\'none\'"/>' if logo else "")
+    st.markdown(f'''<div style="display:flex;align-items:center;gap:4px">{logo_html}<div>
+        <div class="eyebrow">Team intelligence</div><h1 style="margin-bottom:0">{pick}</h1>
+        <div class="mut mono" style="font-size:11.5px">{prof["n_players"]} player(s) in this database — a sample of
+        productive attackers/creators (top goal+assist contributors per league), not a full squad</div></div></div>''',
+        unsafe_allow_html=True)
+
+    if not prof["enough_for_profile"]:
+        st.info(f'Only {prof["n_players"]} player(s) tracked for {pick} this season — too few for a meaningful '
+               f'team profile (need ≥{club.MIN_SQUAD}). Squad list shown below anyway.')
+    else:
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            radar_profile = {ax: {"pct": prof["team_profile"][ax]["mean"]} for ax in S.CAP_AXES}
+            st.markdown('<div class="eyebrow">Team style</div>', unsafe_allow_html=True)
+            st.markdown(charts.capability_radar(radar_profile, size=300), unsafe_allow_html=True)
+        with c2:
+            wk, sk = prof["weakest_axis"], prof["strongest_axis"]
+            st.markdown('<div class="eyebrow">Read</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="fpanel"><div style="font-size:13px;line-height:1.7;color:{P["tx"]}">'
+                       f'Strongest as a group in <b style="color:{P["cy"]}">{S.CAP_AXES[sk]["label"]}</b> '
+                       f'({prof["team_profile"][sk]["mean"]:.0f} mean, range {prof["team_profile"][sk]["min"]:.0f}–{prof["team_profile"][sk]["max"]:.0f}). '
+                       f'Weakest in <b style="color:{P["amber"]}">{S.CAP_AXES[wk]["label"]}</b> '
+                       f'({prof["team_profile"][wk]["mean"]:.0f} mean) — the gap Solve/Tactical Fit would target for a signing.'
+                       f'</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="eyebrow" style="margin-top:12px">Archetype mix</div>', unsafe_allow_html=True)
+            mix = "  ".join(f'<span class="mut">{a}</span> <b class="mono cy">{n}</b>' for a, n in prof["archetype_mix"])
+            st.markdown(f'<div style="font-size:12.5px">{mix}</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="eyebrow" style="margin-top:18px">Squad — ranked by capability index</div>', unsafe_allow_html=True)
+    for r in prof["players"]:
+        if ui.player_row(r, prefix="club"): goto("Player", r["name"])
 
 
 # ================= PLAYER =================
@@ -671,6 +727,7 @@ def video_lab_page():
                 f'bridge in the product spec.</div></div>', unsafe_allow_html=True)
 
 
-PAGES = {"Home": home, "Discover": discover, "Solve": solve_page, "Player": player_page, "Compare": compare_page,
-         "Simulate": simulate_page, "Video Lab": video_lab_page, "Measured": measured_page, "Evidence": evidence}
+PAGES = {"Home": home, "Discover": discover, "Solve": solve_page, "Player": player_page, "Club": club_page,
+         "Compare": compare_page, "Simulate": simulate_page, "Video Lab": video_lab_page, "Measured": measured_page,
+         "Evidence": evidence}
 PAGES.get(ss.page, home)()

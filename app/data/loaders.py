@@ -197,9 +197,18 @@ def value_percentile(record: dict, season: str = None) -> float | None:
 
 
 def capability_index(record: dict, season: str = None) -> float:
-    """A transparent mean of the ATTACKING capability percentiles (not an opaque master score — it is always shown
-    decomposed alongside; §40). Used only to rank Discover and to compute anomalies."""
+    """Mean of a player's TOP-2 attacking capability percentiles (not an opaque master score — always shown
+    decomposed alongside; §40). Used to rank Discover, sort club squads, and compute anomalies.
+
+    Not a flat mean over all 4 axes — verified that was systematically punishing specialists: a flat mean of
+    [space_creation, off_ball_penetration, progressive_intent, final_third_threat] scores a pure #9 (elite
+    final_third_threat/off_ball_penetration, near-zero space_creation/progressive_intent — traits a penalty-box
+    striker structurally doesn't produce) BELOW a more X-shaped creative player with moderate scores across all
+    four, even when the striker is the better player at what strikers do (checked: Haaland 52.7 vs Doku 78.3 on
+    Man City's 25/26 sample — Haaland's own top-2 axes are 80.4/75.4, genuinely elite, just diluted by two axes
+    that aren't his job). Top-2 rewards peak strength in your role's relevant traits instead of breadth across
+    traits you were never going to have."""
     prof = capability_profile(record, season)
     axes = ["space_creation", "off_ball_penetration", "progressive_intent", "final_third_threat"]
-    vs = [prof[a]["pct"] for a in axes if prof[a]["pct"] is not None]
-    return round(float(np.mean(vs)), 1) if vs else 0.0
+    vs = sorted((prof[a]["pct"] for a in axes if prof[a]["pct"] is not None), reverse=True)
+    return round(float(np.mean(vs[:2])), 1) if vs else 0.0
