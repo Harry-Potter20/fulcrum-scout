@@ -184,8 +184,13 @@ def anomaly_map(rows: list, width=680, height=320, max_labels=5) -> str:
     a permanent label, and only if not already crowded against an earlier label (a simple pixel-distance check);
     every point still carries a native hover tooltip (<title>) so nothing is unreachable, and the ranked list
     beneath the chart carries the rest."""
+    empty_svg = f'<svg viewBox="0 0 {width} {height}" width="100%"><rect width="{width}" height="{height}" fill="{P["panel"]}" rx="6"/></svg>'
     if not rows:
-        return f'<svg viewBox="0 0 {width} {height}" width="100%"><rect width="{width}" height="{height}" fill="{P["panel"]}" rx="6"/></svg>'
+        return empty_svg
+    rows = [r for r in rows if r.get("value_percentile") is not None]   # no value data = no valid x-coordinate on
+                                                                          # THIS chart — still ranked below, just not plottable here
+    if not rows:
+        return empty_svg
     m = 38
     vps = [r["value_percentile"] for r in rows]; caps = [r["cap_index"] for r in rows]
     pad = 8
