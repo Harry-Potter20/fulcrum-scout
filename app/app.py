@@ -60,6 +60,8 @@ def c_club_profile(name, season): return club.club_profile(name, season)
 @st.cache_data(show_spinner=False)
 def c_club_fit(name, season): return club.club_fit(name, season)
 @st.cache_data(show_spinner=False)
+def c_formation_fit(name, season): return club.formation_fit(name, season)
+@st.cache_data(show_spinner=False)
 def c_clips(): return vlab.available_clips()
 @st.cache_data(show_spinner=False)
 def c_phase_card(slug): return vlab.phase_card(slug)
@@ -324,6 +326,28 @@ def club_page():
                               f'<b class="mono cy" style="font-size:16px">{c["fit"]:.0f}</b><br>'
                               f'<span style="font-size:11px">{deltas_html}</span></div>', unsafe_allow_html=True)
                 if cc[2].button("Open", key=f"clubfit_{i}"): goto("Player", c["name"])
+
+        ffit = c_formation_fit(pick, ss.season)
+        if ffit.get("viable"):
+            st.markdown('<div class="eyebrow" style="margin-top:20px">Best attacking shape</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="mut mono" style="font-size:10.5px;margin-bottom:8px">Front-line only — this '
+                       f'database has no goalkeeper signal and is itself attack-biased, so a full XI isn\'t honest '
+                       f'to optimize. {ffit["n_eligible"]} eligible player(s) (≥8 90s). Solved as an assignment '
+                       f'problem (Hungarian algorithm) — the shape and lineup that together maximise fit, not a '
+                       f'guess.</div>', unsafe_allow_html=True)
+            shape_tabs = st.tabs([f'{s["shape"]} · {s["mean_fit"]:.0f}' for s in ffit["shapes"]])
+            for tab, s in zip(shape_tabs, ffit["shapes"]):
+                with tab:
+                    for a in s["assignment"]:
+                        rc = st.columns([1.3, 3, 0.8])
+                        rc[0].markdown(f'<div style="padding-top:3px"><span class="sclab" style="color:{P["amber"]}">'
+                                      f'{a["role"]}</span></div>', unsafe_allow_html=True)
+                        rc[1].markdown(f'<b style="font-size:14.5px">{a["player"]}</b>', unsafe_allow_html=True)
+                        rc[2].markdown(f'<div style="text-align:right"><span class="mono cy" '
+                                      f'style="font-size:17px;font-weight:700">{a["fit"]:.0f}</span></div>',
+                                      unsafe_allow_html=True)
+                        st.markdown(f'<div style="border-bottom:1px solid {P["line"]}44;margin:2px 0 6px"></div>',
+                                   unsafe_allow_html=True)
 
     st.markdown('<div class="eyebrow" style="margin-top:18px">Squad — ranked by capability index</div>', unsafe_allow_html=True)
     for i, r in enumerate(prof["players"]):

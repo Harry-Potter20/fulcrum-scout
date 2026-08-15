@@ -175,3 +175,87 @@ def club_fit(club: str, season: str, top: int = 10, max_value_m: float = 1e9) ->
 
     return {"club": club, "season": season, "viable": True,
            "target_axes": [S.CAP_AXES[a]["label"] for a in axes], "candidates": candidates}
+
+
+# ---------------- formation optimization (§40: decomposed, every role traces to a specific player + fit) ----------
+# Deliberately ATTACKING shapes, not full 11-man formations: this database has no goalkeeper signal at all and is
+# itself attack-biased (top goal+assist contributors per league, jobs/fb_multiseason.py) — optimizing a defensive
+# shape would be pretending to data we don't have. This optimizes the part that's honestly measurable: given the
+# attacking players a club actually has, which front-line shape fits them best. Roles are capability-priority
+# stacks (same pattern as fit_service.NEEDS), not position labels — this data has no real position field either.
+SHAPES = {
+    "4-3-3 (front five)": [
+        ("LW", ["space_creation", "off_ball_penetration"]),
+        ("ST", ["final_third_threat", "off_ball_penetration"]),
+        ("RW", ["space_creation", "off_ball_penetration"]),
+        ("CM (creator)", ["progressive_intent", "space_creation"]),
+        ("CM (carrier)", ["press_resistance", "progressive_intent"]),
+    ],
+    "4-2-3-1 (front four)": [
+        ("CAM", ["space_creation", "progressive_intent"]),
+        ("LW", ["space_creation", "off_ball_penetration"]),
+        ("RW", ["space_creation", "off_ball_penetration"]),
+        ("ST", ["final_third_threat", "off_ball_penetration"]),
+    ],
+    "4-4-2 (front four)": [
+        ("ST", ["final_third_threat", "off_ball_penetration"]),
+        ("ST (partner)", ["off_ball_penetration", "final_third_threat"]),
+        ("LW", ["space_creation", "off_ball_penetration"]),
+        ("RW", ["space_creation", "off_ball_penetration"]),
+    ],
+    "3-5-2 (front four)": [
+        ("ST", ["final_third_threat", "off_ball_penetration"]),
+        ("ST (partner)", ["off_ball_penetration", "final_third_threat"]),
+        ("CM (creator)", ["progressive_intent", "space_creation"]),
+        ("CM (carrier)", ["press_resistance", "progressive_intent"]),
+    ],
+}
+
+
+def _role_fit(prof: dict, priorities: list) -> float:
+    """Rank-decayed weighted mean of the relevant axis percentiles — the same formula as fit_service.evaluate(),
+    inlined here to keep club_service free of a service->service import cycle."""
+    weights = [1.0 / (i + 1) for i in range(len(priorities))]
+    num = den = 0.0
+    for w, ax in zip(weights, priorities):
+        p = prof.get(ax, {}).get("pct")
+        if p is not None:
+            num += w * p; den += w
+    return (num / den) if den else 0.0
+
+
+def formation_fit(club: str, season: str, min_nineties: float = 8.0) -> dict:
+    """Assignment-problem formation optimizer over a club's attacking players (see SHAPES docstring for scope).
+    For each candidate shape, solves the optimal one-to-one player-role assignment (Hungarian algorithm,
+    scipy.optimize.linear_sum_assignment) maximising total fit, then ranks shapes by mean role fit. Every number
+    traces to a specific player/role/fit triple — never a single 'best formation' score with nothing to check."""
+    from scipy.optimize import linear_sum_assignment
+    squad = club_squad(club, season)
+    eligible = [r for r in squad if (r.get("nineties") or 0) >= min_nineties]
+    if len(eligible) < 4:
+        return {"club": club, "season": season, "viable": False,
+                "reason": f"only {len(eligible)} player(s) with ≥{min_nineties} 90s — need at least 4 for the "
+                          f"smallest shape"}
+
+    profiles = {r["name"]: D.capability_profile(r, season) for r in eligible}
+    names = list(profiles)
+
+    results = []
+    for shape_name, roles in SHAPES.items():
+        if len(names) < len(roles):
+            continue
+        cost = np.zeros((len(names), len(roles)))
+        for i, nm in enumerate(names):
+            for j, (_, priorities) in enumerate(roles):
+                cost[i, j] = -_role_fit(profiles[nm], priorities)     # negate: solver minimizes cost
+        row_idx, col_idx = linear_sum_assignment(cost)
+        assignment, total = [], 0.0
+        for i, j in zip(row_idx, col_idx):
+            fit = -cost[i, j]
+            total += fit
+            assignment.append({"role": roles[j][0], "player": names[i], "fit": round(fit, 1)})
+        assignment.sort(key=lambda a: -a["fit"])
+        results.append({"shape": shape_name, "total_fit": round(total, 1),
+                        "mean_fit": round(total / len(roles), 1), "assignment": assignment})
+    results.sort(key=lambda r: -r["mean_fit"])
+    return {"club": club, "season": season, "viable": bool(results), "shapes": results, "n_eligible": len(eligible)}

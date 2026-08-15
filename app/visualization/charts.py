@@ -14,10 +14,12 @@ def capability_radar(profile: dict, size=320, accent=None) -> str:
     accent = accent or P["cy"]
     axes = list(S.CAP_AXES)
     n = len(axes); cx = cy = size / 2; rad = size * 0.34
+    PAD = size * 0.34  # axis labels sit past the ring at 1.22x rad; long labels (e.g. "Defensive containment")
+                        # on the left/right axes need canvas room beyond `size` or the svg clips them
     def pt(i, frac):
         a = -math.pi / 2 + i * 2 * math.pi / n
         return cx + rad * frac * math.cos(a), cy + rad * frac * math.sin(a)
-    svg = [f'<svg viewBox="0 0 {size} {size}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,monospace">']
+    svg = [f'<svg viewBox="{-PAD:.0f} 0 {size + 2*PAD:.0f} {size}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,monospace">']
     # rings
     for g in (0.25, 0.5, 0.75, 1.0):
         pts = " ".join(f"{x:.1f},{y:.1f}" for i in range(n) for x, y in [pt(i, g)])
@@ -56,10 +58,11 @@ def capability_radar_multi(profiles: dict, colors: dict, size=420) -> str:
     is never colour-alone (a name label always sits beside its swatch)."""
     axes = list(S.CAP_AXES)
     n = len(axes); cx = cy = size / 2; rad = size * 0.32
+    PAD = size * 0.30  # same edge-clipping fix as capability_radar — long axis labels need room past `size`
     def pt(i, frac):
         a = -math.pi / 2 + i * 2 * math.pi / n
         return cx + rad * frac * math.cos(a), cy + rad * frac * math.sin(a)
-    svg = [f'<svg viewBox="0 0 {size} {size+40}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,monospace">']
+    svg = [f'<svg viewBox="{-PAD:.0f} 0 {size + 2*PAD:.0f} {size+40}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,monospace">']
     for g in (0.25, 0.5, 0.75, 1.0):
         pts = " ".join(f"{x:.1f},{y:.1f}" for i in range(n) for x, y in [pt(i, g)])
         svg.append(f'<polygon points="{pts}" fill="none" stroke="{P["line"]}" stroke-width="1" opacity="0.5"/>')
@@ -79,7 +82,7 @@ def capability_radar_multi(profiles: dict, colors: dict, size=420) -> str:
         anchor = "middle" if abs(x - cx) < 8 else ("start" if x > cx else "end")
         svg.append(f'<text x="{x:.1f}" y="{y:.1f}" font-size="10" fill="{P["dim"]}" text-anchor="{anchor}">{S.CAP_AXES[ax]["label"]}</text>')
     # legend — colour + name, so identity never relies on colour alone
-    lx, ly = 14, size + 22
+    lx, ly = 14 - PAD, size + 22  # shift with the viewBox's new min-x so it stays flush-left, not centered
     for name, profile in profiles.items():
         accent = colors.get(name, P["cy"])
         safe = name.replace("&", "&amp;").replace("<", "")
