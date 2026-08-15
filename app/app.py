@@ -23,6 +23,7 @@ from app.services import counterfactual_service as cfsvc
 from app.services import compare_service as compare
 from app.services import club_service as club
 from app.services import video_lab_service as vlab
+from app.services import opposition_service as opp
 from app import db
 from fulcrum import registry as R
 
@@ -65,6 +66,8 @@ def c_formation_fit(name, season): return club.formation_fit(name, season)
 def c_clips(): return vlab.available_clips()
 @st.cache_data(show_spinner=False)
 def c_phase_card(slug): return vlab.phase_card(slug)
+@st.cache_data(show_spinner=False)
+def c_opponent_report(name, season): return opp.opponent_report(name, season)
 
 
 ss = st.session_state
@@ -114,9 +117,9 @@ with st.sidebar:
                 unsafe_allow_html=True)
     ss.season = st.selectbox("Season", S.SEASONS, index=S.SEASONS.index(ss.season))
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    NAV_ICONS = {"Home": "⌂", "Discover": "◎", "Solve": "⚙", "Player": "◐", "Club": "▦", "Compare": "⇄",
-                "Simulate": "▷", "Video Lab": "▣", "Measured": "▤", "Evidence": "✓"}
-    for pg in ["Home", "Discover", "Solve", "Player", "Club", "Compare", "Simulate", "Video Lab", "Measured", "Evidence"]:
+    NAV_ICONS = {"Home": "⌂", "Discover": "◎", "Solve": "⚙", "Player": "◐", "Club": "▦", "Opposition": "⚔",
+                "Compare": "⇄", "Simulate": "▷", "Video Lab": "▣", "Measured": "▤", "Evidence": "✓"}
+    for pg in ["Home", "Discover", "Solve", "Player", "Club", "Opposition", "Compare", "Simulate", "Video Lab", "Measured", "Evidence"]:
         if st.button(f"{NAV_ICONS[pg]}  {pg}", key=f"nav_{pg}", use_container_width=True, type=("primary" if ss.page == pg else "secondary")):
             goto(pg)
     st.markdown(f'<div class="mut mono" style="font-size:9.5px;margin-top:20px;line-height:1.6">'
@@ -352,6 +355,98 @@ def club_page():
     st.markdown('<div class="eyebrow" style="margin-top:18px">Squad — ranked by capability index</div>', unsafe_allow_html=True)
     for i, r in enumerate(prof["players"]):
         if ui.player_row(r, prefix=f"club_{i}"): goto("Player", r["name"])
+
+
+# ================= OPPOSITION =================
+def opposition_page():
+    st.markdown('<div class="eyebrow">Opposition · where can we hurt them?</div>', unsafe_allow_html=True)
+    st.markdown("# Opposition")
+    clubs = c_club_list(ss.season)
+    names = [c["name"] for c in clubs]
+    if not names:
+        st.warning("No club data for this season."); return
+    default = ss.get("opp_pick") if ss.get("opp_pick") in names else names[0]
+    by_name = {c["name"]: c for c in clubs}
+    def _fmt(n):
+        c = by_name[n]
+        tag = " 📡" if c["measured"] else ""
+        return f'{n} ({c["n_players"]}){tag}'
+    pick = st.selectbox("Opponent", names, index=names.index(default), format_func=_fmt, key="opp_select")
+    ss.opp_pick = pick
+    r = c_opponent_report(pick, ss.season)
+
+    squad_recs = club.club_squad(pick, ss.season)
+    logo = next((rr.get("club_logo_url") for rr in squad_recs if rr.get("club_logo_url")), None)
+    logo_html = (f'<img src="{logo}" style="width:44px;height:44px;object-fit:contain;margin-right:12px" '
+                f'onerror="this.style.display=\'none\'"/>' if logo else "")
+    st.markdown(f'''<div style="display:flex;align-items:center;gap:4px">{logo_html}<div>
+        <div class="eyebrow">Scouting the opponent</div><h1 style="margin-bottom:0">{pick}</h1>
+        <div class="mut mono" style="font-size:11.5px">{r["n_players"]} player(s) in this database — same attack-biased
+        sample as the Club tab</div></div></div>''', unsafe_allow_html=True)
+
+    if r.get("measured"):
+        m = r["measured"]
+        st.markdown('<div class="eyebrow" style="margin-top:16px">📡 Measured — real tracked-match structural exposure</div>',
+                   unsafe_allow_html=True)
+        st.markdown(f'<div class="mut mono" style="font-size:10.5px;margin-bottom:6px">From a real tracked match vs '
+                   f'{m["opponent"]} ({m["minutes"]:.0f} min analysed) — a directly measured rate of durable defensive '
+                   f'gaps, not an estimate. Covers only this specific tracked match.</div>', unsafe_allow_html=True)
+        mc = st.columns(4)
+        mc[0].markdown(f'<div class="kv" style="border:0"><span class="mut" style="font-size:11px">Structural gaps/min</span>'
+                       f'<b class="mono cy">{m["structural_per_min"]:.1f}</b></div>', unsafe_allow_html=True)
+        mc[1].markdown(f'<div class="kv" style="border:0"><span class="mut" style="font-size:11px">Durable fraction</span>'
+                       f'<b class="mono cy">{m["structural_fraction"]*100:.0f}%</b></div>', unsafe_allow_html=True)
+        mc[2].markdown(f'<div class="kv" style="border:0"><span class="mut" style="font-size:11px">Mean lifetime</span>'
+                       f'<b class="mono">{m["mean_lifetime_structural_s"]:.1f}s</b></div>', unsafe_allow_html=True)
+        mc[3].markdown(f'<div class="kv" style="border:0"><span class="mut" style="font-size:11px">Danger (durable vs flicker)</span>'
+                       f'<b class="mono">{m["danger_structural"]:.2f} vs {m["danger_transient"]:.2f}</b></div>', unsafe_allow_html=True)
+
+    if not r.get("viable"):
+        st.info(r.get("reason", "Not enough data for this club."))
+        return
+
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        radar_profile = {ax: {"pct": r["team_profile"][ax]["mean"]} for ax in S.CAP_AXES}
+        st.markdown('<div class="eyebrow">Their team style</div>', unsafe_allow_html=True)
+        st.markdown(charts.capability_radar(radar_profile, size=300, accent=P["danger"]), unsafe_allow_html=True)
+    with c2:
+        wk, sk = r["weakest_axis"], r["strongest_axis"]
+        st.markdown('<div class="eyebrow">Read</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="fpanel"><div style="font-size:13px;line-height:1.7;color:{P["tx"]}">'
+                   f'Strongest as a group in <b style="color:{P["cy"]}">{S.CAP_AXES[sk]["label"]}</b> '
+                   f'({r["team_profile"][sk]["mean"]:.0f} mean). Weakest in <b style="color:{P["amber"]}">'
+                   f'{S.CAP_AXES[wk]["label"]}</b> ({r["team_profile"][wk]["mean"]:.0f} mean).</div></div>',
+                   unsafe_allow_html=True)
+        st.markdown('<div class="eyebrow" style="margin-top:12px">Archetype mix</div>', unsafe_allow_html=True)
+        mix = "  ".join(f'<span class="mut">{a}</span> <b class="mono cy">{n}</b>' for a, n in r["archetype_mix"])
+        st.markdown(f'<div style="font-size:12.5px">{mix}</div>', unsafe_allow_html=True)
+
+    a = r["angle"]
+    st.markdown('<div class="eyebrow" style="margin-top:20px">Where can we hurt them?</div>', unsafe_allow_html=True)
+    mode_badge = {"recruit": ("b-val", "EXPLOITABLE"), "press_trigger": ("b-face", "GAME PLAN"),
+                 "context_only": ("b-mut", "CONTEXT ONLY")}[a["mode"]]
+    st.markdown(f'<div class="fpanel">{ui.badge(mode_badge[1], mode_badge[0])} '
+               f'<span style="font-size:13px;line-height:1.7;color:{P["tx"]}">{a["insight"]}</span></div>',
+               unsafe_allow_html=True)
+
+    if a["mode"] == "recruit" and r["candidates"]:
+        st.markdown(f'<div class="mut mono" style="font-size:10.5px;margin:10px 0 8px">Bridged straight into Tactical '
+                   f'Fit, targeting <b class="amber">{" + ".join(r["target_labels"])}</b> — the capabilities that '
+                   f'punish this squad\'s weak {S.CAP_AXES[a["axis"]]["label"].lower()}. Excludes their own players.</div>',
+                   unsafe_allow_html=True)
+        for i, c in enumerate(r["candidates"][:8]):
+            cc = st.columns([3, 4, 1])
+            cc[0].markdown(f'**{c["name"]}**  \n<span class="mut mono" style="font-size:11px">{c["league"]} · '
+                          f'{c["age"]}y{" · €" + str(c["value_m"]) + "M" if c.get("value_m") else ""} · {c["archetype"]}</span>',
+                          unsafe_allow_html=True)
+            bd = "  ".join(f'<span class="mut">{b["axis"]}</span> <b class="mono" style="color:'
+                          f'{P["cy"] if (b["pct"] or 0)>=75 else P["tx"]}">{int(b["pct"]) if b["pct"] is not None else "n/a"}</b>'
+                          for b in c["breakdown"])
+            cc[1].markdown(f'<div style="padding-top:2px"><span class="sclab">FIT</span> '
+                          f'<b class="mono cy" style="font-size:16px">{c["fit"]:.0f}</b><br>'
+                          f'<span style="font-size:11px">{bd}</span></div>', unsafe_allow_html=True)
+            if cc[2].button("Open", key=f"opp_fit_{i}"): goto("Player", c["name"])
 
 
 # ================= PLAYER =================
@@ -868,6 +963,6 @@ def video_lab_page():
 
 
 PAGES = {"Home": home, "Discover": discover, "Solve": solve_page, "Player": player_page, "Club": club_page,
-         "Compare": compare_page, "Simulate": simulate_page, "Video Lab": video_lab_page, "Measured": measured_page,
-         "Evidence": evidence}
+         "Opposition": opposition_page, "Compare": compare_page, "Simulate": simulate_page,
+         "Video Lab": video_lab_page, "Measured": measured_page, "Evidence": evidence}
 PAGES.get(ss.page, home)()
